@@ -221,18 +221,22 @@ type ytdlpPlaylist struct {
 
 // ytdlpEntry represents a single video in yt-dlp's JSON output.
 type ytdlpEntry struct {
-	ID           string  `json:"id"`
-	Title        string  `json:"title"`
-	Description  string  `json:"description"`
-	Duration     float64 `json:"duration"` // seconds
-	ViewCount    int64   `json:"view_count"`
-	Uploader     string  `json:"uploader"`
-	UploaderID   string  `json:"uploader_id"`
-	ChannelID    string  `json:"channel_id"`
-	UploadDate   string  `json:"upload_date"` // YYYYMMDD format
-	Timestamp    int64   `json:"timestamp"`   // Unix timestamp
-	Thumbnail    string  `json:"thumbnail"`
-	Thumbnails   []ytdlpThumbnail `json:"thumbnails"`
+	ID              string  `json:"id"`
+	Title           string  `json:"title"`
+	Description     string  `json:"description"`
+	Duration        float64 `json:"duration"` // seconds
+	ViewCount       int64   `json:"view_count"`
+	Uploader        string  `json:"uploader"`
+	UploaderID      string  `json:"uploader_id"`
+	ChannelID       string  `json:"channel_id"`
+	UploadDate      string  `json:"upload_date"`      // YYYYMMDD format
+	ReleaseDate     string  `json:"release_date"`     // YYYYMMDD format (for premieres/streams)
+	PublishedDate   string  `json:"published_date"`   // YYYYMMDD format
+	Timestamp       int64   `json:"timestamp"`        // Unix timestamp
+	ReleaseTimestamp int64  `json:"release_timestamp"` // Unix timestamp (for premieres/streams)
+	CreatedAt       int64   `json:"created_at"`       // Unix timestamp (creation time)
+	Thumbnail       string  `json:"thumbnail"`
+	Thumbnails      []ytdlpThumbnail `json:"thumbnails"`
 }
 
 type ytdlpThumbnail struct {
@@ -274,20 +278,30 @@ func parseYtdlpOutput(data []byte, contentType ContentType) ([]VideoInfo, error)
 }
 
 // parseYtdlpDate extracts the published time from a yt-dlp entry.
+// Tries multiple date fields in order of preference, since different content types
+// (regular videos, premieres, live streams) use different fields.
 func parseYtdlpDate(entry ytdlpEntry) time.Time {
-	// Prefer timestamp if available
+	// Try unix timestamps first (most reliable)
 	if entry.Timestamp > 0 {
 		return time.Unix(entry.Timestamp, 0).UTC()
 	}
+	if entry.ReleaseTimestamp > 0 {
+		return time.Unix(entry.ReleaseTimestamp, 0).UTC()
+	}
+	if entry.CreatedAt > 0 {
+		return time.Unix(entry.CreatedAt, 0).UTC()
+	}
 
-	// Fall back to upload_date (YYYYMMDD)
-	if entry.UploadDate != "" {
-		t, err := time.Parse("20060102", entry.UploadDate)
-		if err == nil {
-			return t
+	// Try YYYYMMDD format dates
+	for _, dateStr := range []string{entry.UploadDate, entry.ReleaseDate, entry.PublishedDate} {
+		if dateStr != "" {
+			if t, err := time.Parse("20060102", dateStr); err == nil {
+				return t
+			}
 		}
 	}
 
+	// No date found - return zero time
 	return time.Time{}
 }
 

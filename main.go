@@ -114,10 +114,15 @@ func main() {
 			views = fmt.Sprintf("%d", v.ViewCount)
 		}
 
+		published := "unknown"
+		if !v.Published.IsZero() {
+			published = v.Published.Format("2006-01-02")
+		}
+
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			v.ID,
 			truncate(v.Title, 50),
-			v.Published.Format("2006-01-02"),
+			published,
 			duration,
 			views,
 			v.Type,
