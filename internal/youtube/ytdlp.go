@@ -57,9 +57,34 @@ func (y *YtdlpLister) ListVideos(ctx context.Context, channelURL string, opts *L
 		cfg = &defaultCfg
 	}
 
+	contentType := opts.ContentType
+	if contentType == 0 {
+		contentType = ContentTypeVideos
+	}
+
+	// If ContentTypeBoth, fetch both videos and streams
+	if contentType == ContentTypeBoth {
+		videosOpts := *opts
+		videosOpts.ContentType = ContentTypeVideos
+		videosList, err := y.ListVideos(ctx, channelURL, &videosOpts)
+		if err != nil {
+			return nil, err
+		}
+
+		streamsOpts := *opts
+		streamsOpts.ContentType = ContentTypeStreams
+		streamsList, err := y.ListVideos(ctx, channelURL, &streamsOpts)
+		if err != nil {
+			return nil, err
+		}
+
+		videos = append(videosList, streamsList...)
+		return videos, nil
+	}
+
 	err := retry.Do(ctx, *cfg, ytdlpErrorClassifier, func(ctx context.Context) error {
-		// Build the URL for the videos tab
-		url := normalizeChannelURL(channelURL)
+		// Build the URL for the videos or streams tab
+		url := normalizeChannelURL(channelURL, contentType)
 
 		// Build arguments
 		args := []string{
@@ -115,7 +140,7 @@ func (y *YtdlpLister) ListVideos(ctx context.Context, channelURL string, opts *L
 		}
 
 		// Parse JSON output
-		parsedVideos, parseErr := parseYtdlpOutput(stdout.Bytes())
+		parsedVideos, parseErr := parseYtdlpOutput(stdout.Bytes(), contentType)
 		if parseErr != nil {
 			return parseErr
 		}
@@ -156,17 +181,27 @@ func (y *YtdlpLister) path() string {
 	return defaultYtdlpPath
 }
 
-// normalizeChannelURL ensures the URL points to the videos tab.
-func normalizeChannelURL(url string) string {
-	// If it's just a channel ID, construct full URL
-	if channelIDRegex.MatchString(url) && !strings.Contains(url, "youtube.com") {
-		return "https://www.youtube.com/channel/" + url + "/videos"
+// normalizeChannelURL ensures the URL points to the correct tab (videos or streams).
+func normalizeChannelURL(url string, contentType ContentType) string {
+	tab := "videos"
+	if contentType == ContentTypeStreams {
+		tab = "streams"
 	}
 
-	// Ensure we're pointing to the videos tab
-	if !strings.Contains(url, "/videos") {
+	// If it's just a channel ID, construct full URL
+	if channelIDRegex.MatchString(url) && !strings.Contains(url, "youtube.com") {
+		return "https://www.youtube.com/channel/" + url + "/" + tab
+	}
+
+	// Replace /videos or /streams with the desired tab
+	if strings.Contains(url, "/videos") {
+		url = strings.Replace(url, "/videos", "/"+tab, 1)
+	} else if strings.Contains(url, "/streams") {
+		url = strings.Replace(url, "/streams", "/"+tab, 1)
+	} else {
+		// Ensure we're pointing to the correct tab
 		url = strings.TrimSuffix(url, "/")
-		url = url + "/videos"
+		url = url + "/" + tab
 	}
 
 	return url
@@ -207,10 +242,15 @@ type ytdlpThumbnail struct {
 }
 
 // parseYtdlpOutput parses yt-dlp's JSON output into VideoInfo slice.
-func parseYtdlpOutput(data []byte) ([]VideoInfo, error) {
+func parseYtdlpOutput(data []byte, contentType ContentType) ([]VideoInfo, error) {
 	var playlist ytdlpPlaylist
 	if err := json.Unmarshal(data, &playlist); err != nil {
 		return nil, fmt.Errorf("parse yt-dlp output: %w", err)
+	}
+
+	videoType := "video"
+	if contentType == ContentTypeStreams {
+		videoType = "stream"
 	}
 
 	videos := make([]VideoInfo, 0, len(playlist.Entries))
@@ -225,6 +265,7 @@ func parseYtdlpOutput(data []byte) ([]VideoInfo, error) {
 			ViewCount:   entry.ViewCount,
 			Thumbnail:   bestThumbnail(entry),
 			Published:   parseYtdlpDate(entry),
+			Type:        videoType,
 		}
 		videos = append(videos, video)
 	}

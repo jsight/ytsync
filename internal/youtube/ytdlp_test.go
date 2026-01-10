@@ -51,7 +51,7 @@ func TestNormalizeChannelURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := normalizeChannelURL(tt.input)
+			got := normalizeChannelURL(tt.input, ContentTypeVideos)
 			if got != tt.want {
 				t.Errorf("normalizeChannelURL(%q) = %q, want %q", tt.input, got, tt.want)
 			}
@@ -60,9 +60,9 @@ func TestNormalizeChannelURL(t *testing.T) {
 }
 
 func TestParseYtdlpOutput(t *testing.T) {
-	data := []byte(sampleYtdlpOutput)
+	data := []byte(SampleYtdlpOutput)
 
-	videos, err := parseYtdlpOutput(data)
+	videos, err := parseYtdlpOutput(data, ContentTypeVideos)
 	if err != nil {
 		t.Fatalf("parseYtdlpOutput() error = %v", err)
 	}
@@ -76,8 +76,8 @@ func TestParseYtdlpOutput(t *testing.T) {
 	if v.ID != "dQw4w9WgXcQ" {
 		t.Errorf("video.ID = %q, want %q", v.ID, "dQw4w9WgXcQ")
 	}
-	if v.Title != "Test Video 1" {
-		t.Errorf("video.Title = %q, want %q", v.Title, "Test Video 1")
+	if v.Title != "Video 1" {
+		t.Errorf("video.Title = %q, want %q", v.Title, "Video 1")
 	}
 	if v.Duration != 212*time.Second {
 		t.Errorf("video.Duration = %v, want %v", v.Duration, 212*time.Second)
@@ -204,7 +204,8 @@ EOF
 	}
 
 	ctx := context.Background()
-	videos, err := lister.ListVideos(ctx, "https://www.youtube.com/@test", nil)
+	opts := &ListOptions{ContentType: ContentTypeVideos}
+	videos, err := lister.ListVideos(ctx, "https://www.youtube.com/@test", opts)
 	if err != nil {
 		t.Fatalf("ListVideos() error = %v", err)
 	}

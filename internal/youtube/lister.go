@@ -40,6 +40,10 @@ type ListOptions struct {
 	// SortOrder specifies how videos should be sorted.
 	// Default is SortByDate (newest first).
 	SortOrder SortOrder
+
+	// ContentType specifies what type of content to list.
+	// Default is ContentTypeVideos.
+	ContentType ContentType
 }
 
 // SortOrder specifies how videos should be sorted.
@@ -50,6 +54,18 @@ const (
 	SortByDate SortOrder = iota
 	// SortByPopularity sorts videos by view count, highest first.
 	SortByPopularity
+)
+
+// ContentType specifies what type of content to list.
+type ContentType int
+
+const (
+	// ContentTypeVideos lists regular videos.
+	ContentTypeVideos ContentType = iota
+	// ContentTypeStreams lists live streams.
+	ContentTypeStreams
+	// ContentTypeBoth lists both videos and streams.
+	ContentTypeBoth
 )
 
 // VideoInfo contains metadata about a YouTube video.
@@ -69,7 +85,7 @@ type VideoInfo struct {
 	// Published is when the video was published.
 	Published time.Time `json:"published"`
 
-	// Duration is the video length. May be zero for some sources like RSS.
+	// Duration is the video length. May be zero for some sources like RSS or live streams.
 	Duration time.Duration `json:"duration,omitempty"`
 
 	// Description is the video description. May be truncated by some sources.
@@ -80,6 +96,9 @@ type VideoInfo struct {
 
 	// ViewCount is the number of views. May be zero if not available.
 	ViewCount int64 `json:"view_count,omitempty"`
+
+	// Type indicates whether this is a video or live stream.
+	Type string `json:"type,omitempty"`
 }
 
 // VideoURL returns the full YouTube URL for this video.

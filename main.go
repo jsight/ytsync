@@ -16,6 +16,7 @@ func main() {
 	useRSS := flag.Bool("rss", false, "Use RSS feed instead of yt-dlp for listing")
 	maxVideos := flag.Int("max", 0, "Maximum videos to list (0 = all)")
 	since := flag.String("since", "", "Only videos published after this date (RFC3339, e.g., 2024-01-15T00:00:00Z)")
+	contentTypeStr := flag.String("type", "videos", "Content type: videos, streams, or both")
 	flag.Parse()
 
 	args := flag.Args()
@@ -50,6 +51,20 @@ func main() {
 		publishedAfter = t
 	}
 
+	// Parse content type
+	var contentType youtube.ContentType
+	switch *contentTypeStr {
+	case "videos":
+		contentType = youtube.ContentTypeVideos
+	case "streams":
+		contentType = youtube.ContentTypeStreams
+	case "both":
+		contentType = youtube.ContentTypeBoth
+	default:
+		fmt.Fprintf(os.Stderr, "Error: invalid --type value %q (use videos, streams, or both)\n", *contentTypeStr)
+		os.Exit(1)
+	}
+
 	// Create lister
 	var lister youtube.VideoLister
 	if *useRSS {
@@ -65,6 +80,7 @@ func main() {
 	opts := &youtube.ListOptions{
 		MaxResults:     *maxVideos,
 		PublishedAfter: publishedAfter,
+		ContentType:    contentType,
 	}
 
 	// List videos with timeout
@@ -85,7 +101,7 @@ func main() {
 
 	// Format and print results
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "VIDEO ID\tTITLE\tPUBLISHED\tDURATION\tVIEWS")
+	fmt.Fprintln(w, "VIDEO ID\tTITLE\tPUBLISHED\tDURATION\tVIEWS\tTYPE")
 
 	for _, v := range videos {
 		duration := ""
@@ -98,12 +114,13 @@ func main() {
 			views = fmt.Sprintf("%d", v.ViewCount)
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			v.ID,
 			truncate(v.Title, 50),
 			v.Published.Format("2006-01-02"),
 			duration,
 			views,
+			v.Type,
 		)
 	}
 	w.Flush()

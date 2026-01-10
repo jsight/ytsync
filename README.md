@@ -55,6 +55,22 @@ Only videos published after 2024-01-15:
 ./ytsync --since 2024-01-15T00:00:00Z https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw
 ```
 
+### List live streams instead of videos
+
+Get only live streams (from the Streams tab):
+
+```bash
+./ytsync --type streams https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw
+```
+
+### List both videos and streams
+
+Get all content (videos and live streams combined):
+
+```bash
+./ytsync --type both https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw
+```
+
 ### Use RSS feed (faster, limited to 15 videos)
 
 For incremental syncs, RSS is faster but only returns the 15 most recent videos:
@@ -111,15 +127,17 @@ See `ytsync.json.example` for a template.
 
 ## Output Format
 
-Videos are displayed in a table format:
+Videos are displayed in a table format with type column:
 
 ```
-VIDEO ID      TITLE                                    PUBLISHED   DURATION  VIEWS
-dQw4w9WgXcQ   Never Gonna Give You Up                  2009-10-25  3:32      1000000000
-xQw4w9WgXcZ   Never Gonna Let You Down                 2009-10-26  3:45      500000000
+VIDEO ID      TITLE                                    PUBLISHED   DURATION  VIEWS           TYPE
+dQw4w9WgXcQ   Never Gonna Give You Up                  2009-10-25  3:32      1000000000      video
+xQw4w9WgXcZ   Live Stream with QA                      2024-01-15  0:00      250000          stream
 
 Total: 2 videos
 ```
+
+The `TYPE` column shows either `video` or `stream` depending on the content type.
 
 ## Error Handling
 
