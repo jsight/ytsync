@@ -1,0 +1,11 @@
+{
+  "ytdlp_path": "yt-dlp",
+  "ytdlp_timeout": "5m",
+  "max_videos": 0,
+  "include_shorts": true,
+  "include_live": true,
+  "max_retries": 5,
+  "initial_backoff": "1s",
+  "max_backoff": "30s",
+  "backoff_multiplier": 2.0
+}

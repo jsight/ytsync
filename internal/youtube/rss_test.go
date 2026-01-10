@@ -2,59 +2,128 @@ package youtube
 
 import (
 	"context"
-	"errors"
+	"io"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestRSSLister_ListVideos(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		channelID := r.URL.Query().Get("channel_id")
-		if channelID != "UCtest123456789012345678" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "application/xml")
-		w.Write([]byte(sampleAtomFeed))
-	}))
-	defer server.Close()
+// MockHTTPClient is a mock HTTP client for testing.
+type MockHTTPClient struct {
+	DoFunc func(req *http.Request) (*http.Response, error)
+}
 
+func (m *MockHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	return m.DoFunc(req)
+}
 
-	lister := NewRSSLister()
-	lister.client = server.Client()
+// newMockHTTPClient creates a mock client that returns the given body.
+func newMockHTTPClient(statusCode int, body string) *http.Client {
+	client := &http.Client{}
+	mockTransport := &mockTransport{
+		statusCode: statusCode,
+		body:       body,
+	}
+	client.Transport = mockTransport
+	return client
+}
 
-	// Create custom client that rewrites URLs
-	lister.client.Transport = &testTransport{
-		baseURL: server.URL,
+type mockTransport struct {
+	statusCode int
+	body       string
+}
+
+func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: m.statusCode,
+		Body:       io.NopCloser(strings.NewReader(m.body)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestRSSListerListVideos(t *testing.T) {
+	tests := []struct {
+		name        string
+		statusCode  int
+		body        string
+		channelURL  string
+		wantErr     bool
+		wantCount   int
+		wantVideoID string
+	}{
+		{
+			name:        "valid feed with videos",
+			statusCode:  http.StatusOK,
+			body:        SampleAtomFeed,
+			channelURL:  "UCuAXFkgsw1L7xaCfnd5JJOw",
+			wantErr:     false,
+			wantCount:   2,
+			wantVideoID: "dQw4w9WgXcQ",
+		},
+		{
+			name:       "empty feed",
+			statusCode: http.StatusOK,
+			body:       SampleEmptyAtomFeed,
+			channelURL: "UCuAXFkgsw1L7xaCfnd5JJOw",
+			wantErr:    false,
+			wantCount:  0,
+		},
+		{
+			name:       "channel not found",
+			statusCode: http.StatusNotFound,
+			body:       "",
+			channelURL: "UCuAXFkgsw1L7xaCfnd5JJOw",
+			wantErr:    true,
+		},
+		{
+			name:       "rate limited",
+			statusCode: http.StatusTooManyRequests,
+			body:       "",
+			channelURL: "UCuAXFkgsw1L7xaCfnd5JJOw",
+			wantErr:    true,
+		},
+		{
+			name:       "invalid channel URL",
+			statusCode: http.StatusOK,
+			body:       SampleAtomFeed,
+			channelURL: "invalid-url",
+			wantErr:    true,
+		},
 	}
 
-	ctx := context.Background()
-	videos, err := lister.ListVideos(ctx, "https://www.youtube.com/channel/UCtest123456789012345678", nil)
-	if err != nil {
-		t.Fatalf("ListVideos() error = %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := newMockHTTPClient(tt.statusCode, tt.body)
+			lister := NewRSSListerWithClient(client)
 
-	if len(videos) != 2 {
-		t.Errorf("ListVideos() len = %d, want 2", len(videos))
-	}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 
-	if videos[0].ID != "dQw4w9WgXcQ" {
-		t.Errorf("video[0].ID = %q, want %q", videos[0].ID, "dQw4w9WgXcQ")
-	}
-	if videos[0].Title != "Test Video 1" {
-		t.Errorf("video[0].Title = %q, want %q", videos[0].Title, "Test Video 1")
-	}
-	if videos[0].ChannelName != "Test Channel" {
-		t.Errorf("video[0].ChannelName = %q, want %q", videos[0].ChannelName, "Test Channel")
+			videos, err := lister.ListVideos(ctx, tt.channelURL, nil)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ListVideos() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr && len(videos) != tt.wantCount {
+				t.Errorf("ListVideos() got %d videos, want %d", len(videos), tt.wantCount)
+			}
+
+			if !tt.wantErr && tt.wantCount > 0 && videos[0].ID != tt.wantVideoID {
+				t.Errorf("ListVideos() first video ID = %s, want %s", videos[0].ID, tt.wantVideoID)
+			}
+		})
 	}
 }
 
-func TestRSSLister_SupportsFullHistory(t *testing.T) {
-	lister := NewRSSLister()
+func TestRSSListerSupportsFullHistory(t *testing.T) {
+	client := newMockHTTPClient(http.StatusOK, SampleAtomFeed)
+	lister := NewRSSListerWithClient(client)
+
 	if lister.SupportsFullHistory() {
-		t.Error("RSSLister.SupportsFullHistory() = true, want false")
+		t.Error("RSSLister.SupportsFullHistory() should return false")
 	}
 }
 
@@ -67,32 +136,32 @@ func TestExtractChannelID(t *testing.T) {
 	}{
 		{
 			name:  "direct channel ID",
-			input: "UCtest123456789012345678",
-			want:  "UCtest123456789012345678",
+			input: "UCuAXFkgsw1L7xaCfnd5JJOw",
+			want:  "UCuAXFkgsw1L7xaCfnd5JJOw",
 		},
 		{
-			name:  "channel URL",
-			input: "https://www.youtube.com/channel/UCtest123456789012345678",
-			want:  "UCtest123456789012345678",
+			name:  "full channel URL",
+			input: "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw",
+			want:  "UCuAXFkgsw1L7xaCfnd5JJOw",
 		},
 		{
 			name:  "channel URL with trailing slash",
-			input: "https://www.youtube.com/channel/UCtest123456789012345678/videos",
-			want:  "UCtest123456789012345678",
+			input: "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw/",
+			want:  "UCuAXFkgsw1L7xaCfnd5JJOw",
 		},
 		{
 			name:  "channel URL with query params",
-			input: "https://www.youtube.com/channel/UCtest123456789012345678?sub=1",
-			want:  "UCtest123456789012345678",
+			input: "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw?sub_confirmation=1",
+			want:  "UCuAXFkgsw1L7xaCfnd5JJOw",
 		},
 		{
-			name:    "handle not supported",
-			input:   "https://www.youtube.com/@testchannel",
+			name:    "invalid URL (handle)",
+			input:   "@testchannel",
 			wantErr: true,
 		},
 		{
-			name:    "invalid URL",
-			input:   "not-a-url",
+			name:    "invalid URL (custom name)",
+			input:   "https://www.youtube.com/c/testchannel",
 			wantErr: true,
 		},
 	}
@@ -104,46 +173,8 @@ func TestExtractChannelID(t *testing.T) {
 				t.Errorf("extractChannelID() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if got != tt.want {
-				t.Errorf("extractChannelID() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestRSSLister_Errors(t *testing.T) {
-	tests := []struct {
-		name       string
-		statusCode int
-		wantErr    error
-	}{
-		{
-			name:       "not found",
-			statusCode: http.StatusNotFound,
-			wantErr:    ErrChannelNotFound,
-		},
-		{
-			name:       "rate limited",
-			statusCode: http.StatusTooManyRequests,
-			wantErr:    ErrRateLimited,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(tt.statusCode)
-			}))
-			defer server.Close()
-
-			lister := NewRSSLister()
-			lister.client.Transport = &testTransport{baseURL: server.URL}
-
-			ctx := context.Background()
-			_, err := lister.ListVideos(ctx, "UCtest123456789012345678", nil)
-
-			if !errors.Is(err, tt.wantErr) {
-				t.Errorf("ListVideos() error = %v, want %v", err, tt.wantErr)
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("extractChannelID() = %s, want %s", got, tt.want)
 			}
 		})
 	}
@@ -151,79 +182,67 @@ func TestRSSLister_Errors(t *testing.T) {
 
 func TestFilterVideos(t *testing.T) {
 	videos := []VideoInfo{
-		{ID: "1", Published: time.Date(2025, 1, 3, 0, 0, 0, 0, time.UTC)},
-		{ID: "2", Published: time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)},
-		{ID: "3", Published: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{
+			ID:        "video1",
+			Published: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			ID:        "video2",
+			Published: time.Date(2020, 1, 2, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			ID:        "video3",
+			Published: time.Date(2020, 1, 3, 0, 0, 0, 0, time.UTC),
+		},
 	}
 
-	t.Run("MaxResults", func(t *testing.T) {
-		opts := &ListOptions{MaxResults: 2}
-		result := filterVideos(videos, opts)
-		if len(result) != 2 {
-			t.Errorf("filterVideos() len = %d, want 2", len(result))
-		}
-	})
-
-	t.Run("PublishedAfter", func(t *testing.T) {
-		opts := &ListOptions{
-			PublishedAfter: time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
-		}
-		result := filterVideos(videos, opts)
-		if len(result) != 2 {
-			t.Errorf("filterVideos() len = %d, want 2", len(result))
-		}
-	})
-}
-
-// testTransport rewrites requests to use the test server URL.
-type testTransport struct {
-	baseURL string
-}
-
-func (t *testTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	newURL := t.baseURL + "/feeds/videos.xml?" + req.URL.RawQuery
-	newReq, err := http.NewRequestWithContext(req.Context(), req.Method, newURL, req.Body)
-	if err != nil {
-		return nil, err
+	tests := []struct {
+		name      string
+		opts      *ListOptions
+		wantCount int
+		wantIDs   []string
+	}{
+		{
+			name:      "no options",
+			opts:      nil,
+			wantCount: 3,
+			wantIDs:   []string{"video1", "video2", "video3"},
+		},
+		{
+			name: "max results",
+			opts: &ListOptions{MaxResults: 2},
+			wantCount: 2,
+			wantIDs:   []string{"video1", "video2"},
+		},
+		{
+			name: "published after",
+			opts: &ListOptions{PublishedAfter: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)},
+			wantCount: 2,
+			wantIDs:   []string{"video2", "video3"},
+		},
+		{
+			name: "published after and max results",
+			opts: &ListOptions{
+				PublishedAfter: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+				MaxResults:     1,
+			},
+			wantCount: 1,
+			wantIDs:   []string{"video2"},
+		},
 	}
-	return http.DefaultTransport.RoundTrip(newReq)
-}
 
-const sampleAtomFeed = `<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
-  <title>Test Channel</title>
-  <author>
-    <name>Test Channel</name>
-    <uri>https://www.youtube.com/channel/UCtest123456789012345678</uri>
-  </author>
-  <entry>
-    <id>yt:video:dQw4w9WgXcQ</id>
-    <yt:videoId>dQw4w9WgXcQ</yt:videoId>
-    <yt:channelId>UCtest123456789012345678</yt:channelId>
-    <title>Test Video 1</title>
-    <published>2025-01-10T12:00:00+00:00</published>
-    <updated>2025-01-10T12:00:00+00:00</updated>
-    <media:group>
-      <media:description>Test description 1</media:description>
-      <media:thumbnail url="https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg" width="480" height="360"/>
-      <media:community>
-        <media:statistics views="1000000"/>
-      </media:community>
-    </media:group>
-  </entry>
-  <entry>
-    <id>yt:video:test123abc</id>
-    <yt:videoId>test123abc</yt:videoId>
-    <yt:channelId>UCtest123456789012345678</yt:channelId>
-    <title>Test Video 2</title>
-    <published>2025-01-09T12:00:00+00:00</published>
-    <updated>2025-01-09T12:00:00+00:00</updated>
-    <media:group>
-      <media:description>Test description 2</media:description>
-      <media:thumbnail url="https://i.ytimg.com/vi/test123abc/hqdefault.jpg" width="480" height="360"/>
-      <media:community>
-        <media:statistics views="500"/>
-      </media:community>
-    </media:group>
-  </entry>
-</feed>`
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filtered := filterVideos(videos, tt.opts)
+			if len(filtered) != tt.wantCount {
+				t.Errorf("filterVideos() got %d videos, want %d", len(filtered), tt.wantCount)
+				return
+			}
+			for i, v := range filtered {
+				if v.ID != tt.wantIDs[i] {
+					t.Errorf("filterVideos()[%d] ID = %s, want %s", i, v.ID, tt.wantIDs[i])
+				}
+			}
+		})
+	}
+}

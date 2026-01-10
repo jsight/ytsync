@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
 	"time"
+	"ytsync/internal/retry"
 )
 
 const (
@@ -26,13 +28,18 @@ type YtdlpLister struct {
 
 	// ExtraArgs are additional arguments to pass to yt-dlp.
 	ExtraArgs []string
+
+	// RetryConfig holds retry behavior configuration.
+	RetryConfig *retry.Config
 }
 
 // NewYtdlpLister creates a new yt-dlp based video lister.
 func NewYtdlpLister() *YtdlpLister {
+	cfg := retry.DefaultConfig()
 	return &YtdlpLister{
-		Path:    defaultYtdlpPath,
-		Timeout: defaultYtdlpTimeout,
+		Path:        defaultYtdlpPath,
+		Timeout:     defaultYtdlpTimeout,
+		RetryConfig: &cfg,
 	}
 }
 
@@ -43,66 +50,81 @@ func (y *YtdlpLister) ListVideos(ctx context.Context, channelURL string, opts *L
 		return nil, err
 	}
 
-	// Build the URL for the videos tab
-	url := normalizeChannelURL(channelURL)
-
-	// Build arguments
-	args := []string{
-		"--flat-playlist",
-		"-J", // JSON output
-		"--no-warnings",
+	var videos []VideoInfo
+	cfg := y.RetryConfig
+	if cfg == nil {
+		defaultCfg := retry.DefaultConfig()
+		cfg = &defaultCfg
 	}
 
-	// Add sorting if specified
-	if opts != nil && opts.SortOrder == SortByPopularity {
-		args = append(args, "--playlist-items", "1-")
-		url = strings.TrimSuffix(url, "/videos") + "/videos?view=0&sort=p"
-	}
+	err := retry.Do(ctx, *cfg, ytdlpErrorClassifier, func(ctx context.Context) error {
+		// Build the URL for the videos tab
+		url := normalizeChannelURL(channelURL)
 
-	// Add extra args
-	args = append(args, y.ExtraArgs...)
-	args = append(args, url)
+		// Build arguments
+		args := []string{
+			"--flat-playlist",
+			"-J", // JSON output
+			"--no-warnings",
+		}
 
-	// Create command with timeout
-	timeout := y.Timeout
-	if timeout == 0 {
-		timeout = defaultYtdlpTimeout
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+		// Add sorting if specified
+		if opts != nil && opts.SortOrder == SortByPopularity {
+			args = append(args, "--playlist-items", "1-")
+			url = strings.TrimSuffix(url, "/videos") + "/videos?view=0&sort=p"
+		}
 
-	cmd := exec.CommandContext(ctx, y.path(), args...)
+		// Add extra args
+		args = append(args, y.ExtraArgs...)
+		args = append(args, url)
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+		// Create command with timeout
+		timeout := y.Timeout
+		if timeout == 0 {
+			timeout = defaultYtdlpTimeout
+		}
+		cmdCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
 
-	err := cmd.Run()
+		cmd := exec.CommandContext(cmdCtx, y.path(), args...)
+
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+
+		err := cmd.Run()
+		if err != nil {
+			if cmdCtx.Err() == context.DeadlineExceeded {
+				return &ListerError{Source: "ytdlp", Channel: channelURL, Err: ErrNetworkTimeout}
+			}
+			if cmdCtx.Err() == context.Canceled {
+				return &ListerError{Source: "ytdlp", Channel: channelURL, Err: context.Canceled}
+			}
+
+			// Check for common error patterns in stderr
+			errMsg := stderr.String()
+			if strings.Contains(errMsg, "not found") || strings.Contains(errMsg, "does not exist") {
+				return &ListerError{Source: "ytdlp", Channel: channelURL, Err: ErrChannelNotFound}
+			}
+			if strings.Contains(errMsg, "rate") || strings.Contains(errMsg, "429") {
+				return &ListerError{Source: "ytdlp", Channel: channelURL, Err: ErrRateLimited}
+			}
+
+			return &ListerError{Source: "ytdlp", Channel: channelURL,
+				Err: fmt.Errorf("yt-dlp failed: %w: %s", err, errMsg)}
+		}
+
+		// Parse JSON output
+		parsedVideos, parseErr := parseYtdlpOutput(stdout.Bytes())
+		if parseErr != nil {
+			return parseErr
+		}
+		videos = parsedVideos
+		return nil
+	})
+
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return nil, &ListerError{Source: "ytdlp", Channel: channelURL, Err: ErrNetworkTimeout}
-		}
-		if ctx.Err() == context.Canceled {
-			return nil, &ListerError{Source: "ytdlp", Channel: channelURL, Err: context.Canceled}
-		}
-
-		// Check for common error patterns in stderr
-		errMsg := stderr.String()
-		if strings.Contains(errMsg, "not found") || strings.Contains(errMsg, "does not exist") {
-			return nil, &ListerError{Source: "ytdlp", Channel: channelURL, Err: ErrChannelNotFound}
-		}
-		if strings.Contains(errMsg, "rate") || strings.Contains(errMsg, "429") {
-			return nil, &ListerError{Source: "ytdlp", Channel: channelURL, Err: ErrRateLimited}
-		}
-
-		return nil, &ListerError{Source: "ytdlp", Channel: channelURL,
-			Err: fmt.Errorf("yt-dlp failed: %w: %s", err, errMsg)}
-	}
-
-	// Parse JSON output
-	videos, err := parseYtdlpOutput(stdout.Bytes())
-	if err != nil {
-		return nil, &ListerError{Source: "ytdlp", Channel: channelURL, Err: err}
+		return nil, err
 	}
 
 	// Apply filters
@@ -253,4 +275,26 @@ func coalesce(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// ytdlpErrorClassifier determines if an yt-dlp error is retryable.
+func ytdlpErrorClassifier(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Permanent errors - don't retry
+	var listerErr *ListerError
+	if errors.As(err, &listerErr) {
+		switch listerErr.Err {
+		case ErrChannelNotFound:
+			return false
+		default:
+			// Retryable: rate limit, timeout, network errors
+			return true
+		}
+	}
+
+	// Default to retryable for unknown errors
+	return true
 }

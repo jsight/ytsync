@@ -3,12 +3,14 @@ package youtube
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
+	"ytsync/internal/retry"
 )
 
 const (
@@ -20,15 +22,18 @@ const (
 // RSS feeds only return the 15 most recent videos, so this is best
 // suited for incremental sync after an initial full sync.
 type RSSLister struct {
-	client *http.Client
+	client      *http.Client
+	RetryConfig *retry.Config
 }
 
 // NewRSSLister creates a new RSS-based video lister.
 func NewRSSLister() *RSSLister {
+	cfg := retry.DefaultConfig()
 	return &RSSLister{
 		client: &http.Client{
 			Timeout: defaultTimeout,
 		},
+		RetryConfig: &cfg,
 	}
 }
 
@@ -45,44 +50,58 @@ func (r *RSSLister) ListVideos(ctx context.Context, channelURL string, opts *Lis
 		return nil, &ListerError{Source: "rss", Channel: channelURL, Err: err}
 	}
 
-	feedURL := fmt.Sprintf(rssFeedURLTemplate, channelID)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
-	if err != nil {
-		return nil, &ListerError{Source: "rss", Channel: channelURL, Err: err}
+	var videos []VideoInfo
+	cfg := r.RetryConfig
+	if cfg == nil {
+		defaultCfg := retry.DefaultConfig()
+		cfg = &defaultCfg
 	}
 
-	resp, err := r.client.Do(req)
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, &ListerError{Source: "rss", Channel: channelURL, Err: ErrNetworkTimeout}
+	err = retry.Do(ctx, *cfg, rssErrorClassifier, func(ctx context.Context) error {
+		feedURL := fmt.Sprintf(rssFeedURLTemplate, channelID)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
+		if err != nil {
+			return &ListerError{Source: "rss", Channel: channelURL, Err: err}
 		}
-		return nil, &ListerError{Source: "rss", Channel: channelURL, Err: err}
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, &ListerError{Source: "rss", Channel: channelURL, Err: ErrChannelNotFound}
-	}
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, &ListerError{Source: "rss", Channel: channelURL, Err: ErrRateLimited}
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, &ListerError{Source: "rss", Channel: channelURL,
-			Err: fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)}
-	}
+		resp, err := r.client.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return &ListerError{Source: "rss", Channel: channelURL, Err: ErrNetworkTimeout}
+			}
+			return &ListerError{Source: "rss", Channel: channelURL, Err: err}
+		}
+		defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusNotFound {
+			return &ListerError{Source: "rss", Channel: channelURL, Err: ErrChannelNotFound}
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return &ListerError{Source: "rss", Channel: channelURL, Err: ErrRateLimited}
+		}
+		if resp.StatusCode != http.StatusOK {
+			return &ListerError{Source: "rss", Channel: channelURL,
+				Err: fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)}
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return &ListerError{Source: "rss", Channel: channelURL, Err: err}
+		}
+
+		feed, err := parseAtomFeed(body)
+		if err != nil {
+			return &ListerError{Source: "rss", Channel: channelURL, Err: err}
+		}
+
+		videos = feedToVideoInfo(feed, channelID)
+		return nil
+	})
+
 	if err != nil {
-		return nil, &ListerError{Source: "rss", Channel: channelURL, Err: err}
+		return nil, err
 	}
-
-	feed, err := parseAtomFeed(body)
-	if err != nil {
-		return nil, &ListerError{Source: "rss", Channel: channelURL, Err: err}
-	}
-
-	videos := feedToVideoInfo(feed, channelID)
 
 	// Apply filters
 	if opts != nil {
@@ -214,4 +233,26 @@ func extractChannelID(input string) (string, error) {
 	}
 
 	return "", fmt.Errorf("%w: cannot extract channel ID from %q (handles require resolution)", ErrInvalidURL, input)
+}
+
+// rssErrorClassifier determines if an RSS error is retryable.
+func rssErrorClassifier(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Permanent errors - don't retry
+	var listerErr *ListerError
+	if errors.As(err, &listerErr) {
+		switch listerErr.Err {
+		case ErrChannelNotFound, ErrInvalidURL:
+			return false
+		default:
+			// Retryable: rate limit, timeout, network errors
+			return true
+		}
+	}
+
+	// Default to retryable for unknown errors
+	return true
 }
