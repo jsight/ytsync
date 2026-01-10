@@ -87,10 +87,12 @@ func (y *YtdlpLister) ListVideos(ctx context.Context, channelURL string, opts *L
 		url := normalizeChannelURL(channelURL, contentType)
 
 		// Build arguments
+		// Note: We DON'T use --flat-playlist because it returns stub entries without dates.
+		// Instead, we get full entry info which includes all date fields.
 		args := []string{
-			"--flat-playlist",
 			"-J", // JSON output
 			"--no-warnings",
+			"--skip-unavailable-fragments", // Don't fail on age-gated videos
 		}
 
 		// Add sorting if specified
