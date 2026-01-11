@@ -17,6 +17,7 @@ type Client struct {
 	base        *http.Client
 	config      *Config
 	rateLimiter *RateLimiter
+	session     *SessionManager
 }
 
 // Config holds HTTP client configuration including retry and rate limit settings.
@@ -121,6 +122,7 @@ func New(cfg *Config) *Client {
 		base:        base,
 		config:      cfg,
 		rateLimiter: NewRateLimiter(cfg.RateLimiter),
+		session:     nil,
 	}
 }
 
@@ -160,6 +162,15 @@ func (c *Client) Do(ctx context.Context, method, url string, body io.Reader, hea
 		// Apply custom headers
 		for k, v := range headers {
 			req.Header.Set(k, v)
+		}
+
+		// Apply session headers if available
+		if c.session != nil {
+			for k, v := range c.session.GetHeaders() {
+				if req.Header.Get(k) == "" { // Don't override explicitly set headers
+					req.Header.Set(k, v)
+				}
+			}
 		}
 
 		resp, err := c.base.Do(req)
