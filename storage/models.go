@@ -92,6 +92,11 @@ type SyncState struct {
 	Status string `json:"status"`
 	// LastError contains the error message if the last sync failed.
 	LastError string `json:"last_error,omitempty"`
+	// ContinuationToken stores the Innertube API continuation token for resumable syncs.
+	// This is a JSON-serialized innertube.ContinuationState.
+	ContinuationToken string `json:"continuation_token,omitempty"`
+	// ContinuationExpiresAt is when the continuation token expires (typically 2-4 hours).
+	ContinuationExpiresAt time.Time `json:"continuation_expires_at,omitempty"`
 }
 
 // Sync status constants for the SyncState.Status field.
