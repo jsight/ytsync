@@ -111,15 +111,26 @@ func (v VideoInfo) ChannelURL() string {
 	return "https://www.youtube.com/channel/" + v.ChannelID
 }
 
-// ListerError wraps errors with context about the listing operation.
+// ListerError wraps listing errors with context about what failed.
+// Use errors.As() to extract this error type and get operation details:
+//
+//	var listerErr *youtube.ListerError
+//	if errors.As(err, &listerErr) {
+//		fmt.Printf("Failed to list from %s: %v\n", listerErr.Source, listerErr.Err)
+//	}
 type ListerError struct {
-	Source  string // Source of error: "rss", "ytdlp", "api"
-	Channel string // Channel URL or ID being listed
-	Err     error  // Underlying error
+	// Source indicates which lister produced the error ("rss", "ytdlp", "api").
+	Source string
+	// Channel is the channel URL or ID that was being listed.
+	Channel string
+	// Err is the underlying error that occurred.
+	Err error
 }
 
+// Error returns a string representation of the listing error.
 func (e *ListerError) Error() string {
 	return "youtube: " + e.Source + " listing " + e.Channel + ": " + e.Err.Error()
 }
 
+// Unwrap returns the underlying error for use with errors.Is() and errors.As().
 func (e *ListerError) Unwrap() error { return e.Err }

@@ -363,16 +363,26 @@ type subtitleFormat struct {
 	Ext string `json:"ext"`
 }
 
-// TranscriptError wraps transcript extraction errors.
+// TranscriptError wraps transcript extraction errors with video context.
+// Use errors.As() to extract this error type and get the video ID:
+//
+//	var trErr *youtube.TranscriptError
+//	if errors.As(err, &trErr) {
+//		fmt.Printf("Failed to extract transcript for %s: %v\n", trErr.VideoID, trErr.Err)
+//	}
 type TranscriptError struct {
+	// VideoID is the YouTube video ID where transcript extraction failed.
 	VideoID string
-	Err     error
+	// Err is the underlying error that occurred.
+	Err error
 }
 
+// Error returns a string representation of the transcript error.
 func (e *TranscriptError) Error() string {
 	return fmt.Sprintf("transcript %s: %v", e.VideoID, e.Err)
 }
 
+// Unwrap returns the underlying error for use with errors.Is() and errors.As().
 func (e *TranscriptError) Unwrap() error {
 	return e.Err
 }

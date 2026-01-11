@@ -120,16 +120,27 @@ func jitter(d time.Duration, fraction float64) time.Duration {
 	return time.Duration(jitterValue)
 }
 
-// RetryableError wraps an error and indicates it's retryable.
+// RetryableError wraps an error and indicates it failed after retrying.
+// It provides information about how many retries were attempted.
+// Use errors.As() to extract this error type:
+//
+//	var retErr *RetryableError
+//	if errors.As(err, &retErr) {
+//		fmt.Printf("Failed after %d retries\n", retErr.Retries)
+//	}
 type RetryableError struct {
-	Err    error
+	// Err is the underlying error that persisted after all retries.
+	Err error
+	// Retries is the number of retry attempts that were made.
 	Retries int
 }
 
+// Error returns a string representation of the error.
 func (e *RetryableError) Error() string {
 	return fmt.Sprintf("failed after %d retries: %v", e.Retries, e.Err)
 }
 
+// Unwrap returns the underlying error for use with errors.Is() and errors.As().
 func (e *RetryableError) Unwrap() error {
 	return e.Err
 }

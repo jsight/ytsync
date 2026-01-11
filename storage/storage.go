@@ -23,7 +23,12 @@ var (
 )
 
 // StorageError wraps storage errors with operation and entity context.
-// It helps identify which operation failed and on which entity.
+// Use errors.As() to extract this error type and get operation details:
+//
+//	var storErr *storage.StorageError
+//	if errors.As(err, &storErr) {
+//		fmt.Printf("Failed to %s %s %s: %v\n", storErr.Op, storErr.Entity, storErr.ID, storErr.Err)
+//	}
 type StorageError struct {
 	// Op is the operation that failed ("create", "read", "update", "delete").
 	Op string
@@ -35,6 +40,7 @@ type StorageError struct {
 	Err error
 }
 
+// Error returns a string representation of the storage error.
 func (e *StorageError) Error() string {
 	if e.ID != "" {
 		return fmt.Sprintf("storage: %s %s %s: %v", e.Op, e.Entity, e.ID, e.Err)
@@ -42,6 +48,7 @@ func (e *StorageError) Error() string {
 	return fmt.Sprintf("storage: %s %s: %v", e.Op, e.Entity, e.Err)
 }
 
+// Unwrap returns the underlying error for use with errors.Is() and errors.As().
 func (e *StorageError) Unwrap() error { return e.Err }
 
 // Store is the main storage interface for all ytsync data operations.
