@@ -2,7 +2,7 @@
 //
 // It enables programmatic access to YouTube videos, transcripts, and metadata.
 //
-// Overview
+// # Overview
 //
 // ytsync provides high-level convenience functions for the most common operations:
 //
@@ -10,7 +10,7 @@
 //   - ExtractTranscript: Get transcript for a video
 //   - FetchVideoMetadata: Retrieve comprehensive video metadata
 //
-// Quick Start
+// # Quick Start
 //
 // List videos from a channel:
 //
@@ -39,13 +39,13 @@
 //	}
 //	fmt.Printf("Title: %s\nViews: %d\n", metadata.Title, metadata.ViewCount)
 //
-// Configuration
+// # Configuration
 //
 // ytsync uses a configuration system that loads settings from multiple sources:
 //
-//   1. Environment variables (highest priority)
-//   2. Config file (ytsync.json or ~/.config/ytsync/ytsync.json)
-//   3. Default values (lowest priority)
+//  1. Environment variables (highest priority)
+//  2. Config file (ytsync.json or ~/.config/ytsync/ytsync.json)
+//  3. Default values (lowest priority)
 //
 // Environment variables:
 //
@@ -58,7 +58,7 @@
 //   - YTSYNC_INITIAL_BACKOFF: Initial retry backoff duration
 //   - YTSYNC_MAX_BACKOFF: Maximum retry backoff duration
 //
-// Error Handling
+// # Error Handling
 //
 // All operations return errors that implement standard Go error handling:
 //
@@ -75,7 +75,7 @@
 //		fmt.Printf("Listing %s failed: %v\n", listerErr.Channel, listerErr.Err)
 //	}
 //
-// Advanced Usage
+// # Advanced Usage
 //
 // For more control, use the sub-packages directly:
 //
@@ -93,11 +93,10 @@
 //		ContentType: youtube.ContentTypeBoth,
 //	})
 //
-// Dependencies
+// # Dependencies
 //
 // ytsync requires yt-dlp to be installed and available in PATH or specified via
 // YTSYNC_YTDLP_PATH environment variable.
 //
 // Install yt-dlp: https://github.com/yt-dlp/yt-dlp
-//
 package ytsync

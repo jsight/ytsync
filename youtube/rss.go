@@ -130,15 +130,15 @@ type atomAuthor struct {
 }
 
 type atomEntry struct {
-	ID          string         `xml:"id"`
-	VideoID     string         `xml:"http://www.youtube.com/xml/schemas/2015 videoId"`
-	ChannelID   string         `xml:"http://www.youtube.com/xml/schemas/2015 channelId"`
-	Title       string         `xml:"title"`
-	Published   time.Time      `xml:"published"`
-	Updated     time.Time      `xml:"updated"`
-	Description string         `xml:"http://search.yahoo.com/mrss/ group>http://search.yahoo.com/mrss/ description"`
-	Thumbnail   atomThumbnail  `xml:"http://search.yahoo.com/mrss/ group>http://search.yahoo.com/mrss/ thumbnail"`
-	Community   atomCommunity  `xml:"http://search.yahoo.com/mrss/ group>http://search.yahoo.com/mrss/ community"`
+	ID          string        `xml:"id"`
+	VideoID     string        `xml:"http://www.youtube.com/xml/schemas/2015 videoId"`
+	ChannelID   string        `xml:"http://www.youtube.com/xml/schemas/2015 channelId"`
+	Title       string        `xml:"title"`
+	Published   time.Time     `xml:"published"`
+	Updated     time.Time     `xml:"updated"`
+	Description string        `xml:"group>description"`
+	Thumbnail   atomThumbnail `xml:"group>thumbnail"`
+	Community   atomCommunity `xml:"group>community"`
 }
 
 type atomThumbnail struct {

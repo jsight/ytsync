@@ -288,8 +288,8 @@ func (te *TranscriptExtractor) downloadTranscript(url string) ([]TranscriptEntry
 	// Parse JSON3 format
 	var result struct {
 		Events []struct {
-			TStart   int64  `json:"tStartMs"`
-			Duration int64  `json:"dDurationMs"`
+			TStart   int64 `json:"tStartMs"`
+			Duration int64 `json:"dDurationMs"`
 			Segs     []struct {
 				Text string `json:"utf8"`
 			} `json:"segs"`

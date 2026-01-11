@@ -212,34 +212,34 @@ func normalizeChannelURL(url string, contentType ContentType) string {
 
 // ytdlpPlaylist represents yt-dlp's JSON output for a playlist/channel.
 type ytdlpPlaylist struct {
-	ID          string        `json:"id"`
-	Title       string        `json:"title"`
-	Uploader    string        `json:"uploader"`
-	UploaderID  string        `json:"uploader_id"`
-	ChannelID   string        `json:"channel_id"`
-	ChannelURL  string        `json:"channel_url"`
-	Entries     []ytdlpEntry  `json:"entries"`
-	Description string        `json:"description"`
+	ID          string       `json:"id"`
+	Title       string       `json:"title"`
+	Uploader    string       `json:"uploader"`
+	UploaderID  string       `json:"uploader_id"`
+	ChannelID   string       `json:"channel_id"`
+	ChannelURL  string       `json:"channel_url"`
+	Entries     []ytdlpEntry `json:"entries"`
+	Description string       `json:"description"`
 }
 
 // ytdlpEntry represents a single video in yt-dlp's JSON output.
 type ytdlpEntry struct {
-	ID              string  `json:"id"`
-	Title           string  `json:"title"`
-	Description     string  `json:"description"`
-	Duration        float64 `json:"duration"` // seconds
-	ViewCount       int64   `json:"view_count"`
-	Uploader        string  `json:"uploader"`
-	UploaderID      string  `json:"uploader_id"`
-	ChannelID       string  `json:"channel_id"`
-	UploadDate      string  `json:"upload_date"`      // YYYYMMDD format
-	ReleaseDate     string  `json:"release_date"`     // YYYYMMDD format (for premieres/streams)
-	PublishedDate   string  `json:"published_date"`   // YYYYMMDD format
-	Timestamp       int64   `json:"timestamp"`        // Unix timestamp
-	ReleaseTimestamp int64  `json:"release_timestamp"` // Unix timestamp (for premieres/streams)
-	CreatedAt       int64   `json:"created_at"`       // Unix timestamp (creation time)
-	Thumbnail       string  `json:"thumbnail"`
-	Thumbnails      []ytdlpThumbnail `json:"thumbnails"`
+	ID               string           `json:"id"`
+	Title            string           `json:"title"`
+	Description      string           `json:"description"`
+	Duration         float64          `json:"duration"` // seconds
+	ViewCount        int64            `json:"view_count"`
+	Uploader         string           `json:"uploader"`
+	UploaderID       string           `json:"uploader_id"`
+	ChannelID        string           `json:"channel_id"`
+	UploadDate       string           `json:"upload_date"`       // YYYYMMDD format
+	ReleaseDate      string           `json:"release_date"`      // YYYYMMDD format (for premieres/streams)
+	PublishedDate    string           `json:"published_date"`    // YYYYMMDD format
+	Timestamp        int64            `json:"timestamp"`         // Unix timestamp
+	ReleaseTimestamp int64            `json:"release_timestamp"` // Unix timestamp (for premieres/streams)
+	CreatedAt        int64            `json:"created_at"`        // Unix timestamp (creation time)
+	Thumbnail        string           `json:"thumbnail"`
+	Thumbnails       []ytdlpThumbnail `json:"thumbnails"`
 }
 
 type ytdlpThumbnail struct {

@@ -209,14 +209,14 @@ func TestFilterVideos(t *testing.T) {
 			wantIDs:   []string{"video1", "video2", "video3"},
 		},
 		{
-			name: "max results",
-			opts: &ListOptions{MaxResults: 2},
+			name:      "max results",
+			opts:      &ListOptions{MaxResults: 2},
 			wantCount: 2,
 			wantIDs:   []string{"video1", "video2"},
 		},
 		{
-			name: "published after",
-			opts: &ListOptions{PublishedAfter: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)},
+			name:      "published after",
+			opts:      &ListOptions{PublishedAfter: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)},
 			wantCount: 2,
 			wantIDs:   []string{"video2", "video3"},
 		},

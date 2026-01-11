@@ -26,13 +26,13 @@ type JSONStore struct {
 
 // storeData is the top-level JSON structure.
 type storeData struct {
-	Version     string                  `json:"version"`
-	UpdatedAt   time.Time               `json:"updated_at"`
-	Channels    map[string]*Channel     `json:"channels"`
-	Videos      map[string]*Video       `json:"videos"`
-	Transcripts map[string]*Transcript  `json:"transcripts"`
-	SyncStates  map[string]*SyncState   `json:"sync_states"`
-	Indexes     *indexes                `json:"indexes"`
+	Version     string                 `json:"version"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+	Channels    map[string]*Channel    `json:"channels"`
+	Videos      map[string]*Video      `json:"videos"`
+	Transcripts map[string]*Transcript `json:"transcripts"`
+	SyncStates  map[string]*SyncState  `json:"sync_states"`
+	Indexes     *indexes               `json:"indexes"`
 }
 
 // indexes maintains lookup tables for efficient queries.

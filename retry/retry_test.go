@@ -188,9 +188,9 @@ func TestBackoffProgression(t *testing.T) {
 
 func TestIsRetryable(t *testing.T) {
 	tests := []struct {
-		name  string
-		err   error
-		want  bool
+		name string
+		err  error
+		want bool
 	}{
 		{"nil error", nil, true}, // nil is treated as no error, but function returns false
 		{"context canceled", context.Canceled, false},
