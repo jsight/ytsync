@@ -220,6 +220,7 @@ func (te *TranscriptExtractor) extractTranscript(info *ytdlpVideoInfo, videoID s
 	// Find JSON format if available and download it
 	var entries []TranscriptEntry
 	var downloadURL string
+	var downloadErr error
 	for _, sub := range subtitleData {
 		if sub.Ext == "json3" {
 			downloadURL = sub.URL
@@ -227,10 +228,18 @@ func (te *TranscriptExtractor) extractTranscript(info *ytdlpVideoInfo, videoID s
 			parsedEntries, err := te.downloadTranscript(sub.URL)
 			if err == nil {
 				entries = parsedEntries
+			} else {
+				// Store the error to return to caller
+				downloadErr = err
 			}
-			// If download fails, we'll just return empty entries
+			// If download fails, we'll still return metadata with the error
 			break
 		}
+	}
+
+	// If we couldn't download, return an error
+	if downloadURL != "" && len(entries) == 0 && downloadErr != nil {
+		return nil, &TranscriptError{VideoID: videoID, Err: downloadErr}
 	}
 
 	return &Transcript{
@@ -245,15 +254,30 @@ func (te *TranscriptExtractor) extractTranscript(info *ytdlpVideoInfo, videoID s
 
 // downloadTranscript downloads and parses a transcript from the YouTube API.
 func (te *TranscriptExtractor) downloadTranscript(url string) ([]TranscriptEntry, error) {
-	// Fetch the transcript data
-	resp, err := http.Get(url)
+	// Fetch the transcript data with timeout
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("download transcript: %w", err)
+		if strings.Contains(err.Error(), "context deadline exceeded") {
+			return nil, fmt.Errorf("download timeout: YouTube is not responding (rate limited or blocked)")
+		}
+		return nil, fmt.Errorf("download failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("download transcript: HTTP %d", resp.StatusCode)
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// Success
+	case http.StatusForbidden:
+		return nil, fmt.Errorf("access denied: YouTube blocked this request (rate limited or region restricted)")
+	case http.StatusTooManyRequests:
+		return nil, fmt.Errorf("rate limited: too many requests to YouTube. Wait a few minutes and try again")
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("not found: transcript no longer available")
+	case http.StatusUnauthorized:
+		return nil, fmt.Errorf("unauthorized: transcript access denied")
+	default:
+		return nil, fmt.Errorf("download failed: HTTP %d %s", resp.StatusCode, resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
