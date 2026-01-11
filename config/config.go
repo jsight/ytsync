@@ -10,24 +10,32 @@ import (
 	"time"
 )
 
-// Config holds all application configuration.
+// Config holds all application configuration for YouTube synchronization operations.
 type Config struct {
-	// yt-dlp settings
-	YtdlpPath    string        `json:"ytdlp_path"`
+	// YtdlpPath is the path to the yt-dlp executable (default: "yt-dlp")
+	YtdlpPath string `json:"ytdlp_path"`
+	// YtdlpTimeout is the maximum time to wait for yt-dlp operations
 	YtdlpTimeout time.Duration `json:"ytdlp_timeout"`
 
-	// Extraction settings
-	MaxVideos   int       `json:"max_videos"`
-	IncludeShorts bool    `json:"include_shorts"`
-	IncludeLive bool     `json:"include_live"`
-	DateAfter   time.Time `json:"date_after"`
-	DateBefore  time.Time `json:"date_before"`
+	// MaxVideos limits the maximum number of videos to retrieve (0 = all)
+	MaxVideos int `json:"max_videos"`
+	// IncludeShorts specifies whether to include YouTube Shorts
+	IncludeShorts bool `json:"include_shorts"`
+	// IncludeLive specifies whether to include live streams
+	IncludeLive bool `json:"include_live"`
+	// DateAfter filters for videos published after this date
+	DateAfter time.Time `json:"date_after"`
+	// DateBefore filters for videos published before this date
+	DateBefore time.Time `json:"date_before"`
 
-	// Retry settings
-	MaxRetries       int           `json:"max_retries"`
-	InitialBackoff   time.Duration `json:"initial_backoff"`
-	MaxBackoff       time.Duration `json:"max_backoff"`
-	BackoffMultiplier float64      `json:"backoff_multiplier"`
+	// MaxRetries is the maximum number of retries for failed operations
+	MaxRetries int `json:"max_retries"`
+	// InitialBackoff is the initial backoff duration for retries
+	InitialBackoff time.Duration `json:"initial_backoff"`
+	// MaxBackoff is the maximum backoff duration for retries
+	MaxBackoff time.Duration `json:"max_backoff"`
+	// BackoffMultiplier is the multiplier for exponential backoff (must be > 1)
+	BackoffMultiplier float64 `json:"backoff_multiplier"`
 }
 
 // DefaultConfig returns configuration with safe defaults.
@@ -132,7 +140,8 @@ func (c *Config) loadFromEnv() {
 	}
 }
 
-// Validate checks configuration validity.
+// Validate checks that configuration values are valid and consistent.
+// It returns an error if any configuration value is invalid.
 func (c *Config) Validate() error {
 	if c.YtdlpTimeout <= 0 {
 		return fmt.Errorf("ytdlp_timeout must be positive")

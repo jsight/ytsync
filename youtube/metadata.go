@@ -10,8 +10,10 @@ import (
 )
 
 // VideoMetadata contains essential metadata about a YouTube video.
+// This is typically fetched using yt-dlp and contains comprehensive information
+// about a video that may not be available from RSS feeds or other sources.
 type VideoMetadata struct {
-	// VideoID is the YouTube video ID.
+	// ID is the YouTube video ID (e.g., "dQw4w9WgXcQ").
 	ID string `json:"id"`
 	// Title is the video title.
 	Title string `json:"title"`
@@ -19,29 +21,31 @@ type VideoMetadata struct {
 	Description string `json:"description"`
 	// Duration is the video length in seconds.
 	Duration int `json:"duration"`
-	// ViewCount is the number of views.
+	// ViewCount is the total number of views.
 	ViewCount int64 `json:"view_count"`
-	// UploadDate is when the video was uploaded (YYYYMMDD).
+	// UploadDate is when the video was uploaded in YYYYMMDD format.
 	UploadDate string `json:"upload_date"`
-	// Uploader is the channel name.
+	// Uploader is the channel name/display name.
 	Uploader string `json:"uploader"`
 	// UploaderID is the channel ID.
 	UploaderID string `json:"uploader_id"`
-	// UploaderURL is the channel URL.
+	// UploaderURL is the full channel URL.
 	UploaderURL string `json:"uploader_url"`
-	// ThumbnailURL is the video thumbnail.
+	// ThumbnailURL is the URL to the best available thumbnail image.
 	ThumbnailURL string `json:"thumbnail_url"`
-	// Categories are video categories.
+	// Categories are the video's YouTube categories.
 	Categories []string `json:"categories"`
-	// Tags are video tags.
+	// Tags are the video's tags/keywords.
 	Tags []string `json:"tags"`
-	// IsLiveContent indicates if this is live content.
+	// IsLiveContent indicates whether this is a live stream or premiere.
 	IsLiveContent bool `json:"is_live_content"`
-	// FetchedAt is when this metadata was fetched.
+	// FetchedAt is the timestamp when this metadata was retrieved.
 	FetchedAt time.Time `json:"fetched_at"`
 }
 
-// FetchMetadata retrieves metadata for a video using yt-dlp.
+// FetchMetadata retrieves comprehensive metadata for a video using yt-dlp.
+// It executes yt-dlp with JSON output and parses the result into a VideoMetadata struct.
+// The provided context is used to enforce timeouts and handle cancellation.
 func FetchMetadata(ctx context.Context, videoID string, ytdlpPath string) (*VideoMetadata, error) {
 	// Run yt-dlp to get JSON metadata
 	cmd := exec.CommandContext(ctx, ytdlpPath, "-J", "--no-warnings", videoID)
