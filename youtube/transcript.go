@@ -12,7 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
-	"ytsync/internal/retry"
+	"ytsync/retry"
 )
 
 // TranscriptExtractor provides transcript extraction functionality.

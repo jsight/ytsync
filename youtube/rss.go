@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"ytsync/internal/retry"
+	"ytsync/retry"
 )
 
 const (

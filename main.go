@@ -10,8 +10,8 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
-	"ytsync/internal/config"
-	"ytsync/internal/youtube"
+	"ytsync/config"
+	"ytsync/youtube"
 )
 
 func main() {
