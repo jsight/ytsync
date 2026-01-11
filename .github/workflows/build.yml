@@ -1,0 +1,45 @@
+name: Build CLI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    name: Build CLI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: latest
+
+      - name: Build CLI
+        run: go build -o ytsync ./cmd/ytsync
+
+      - name: Verify CLI works
+        run: ./ytsync help
+
+      - name: Build for multiple platforms
+        run: |
+          mkdir -p dist
+          
+          # Linux
+          GOOS=linux GOARCH=amd64 go build -o dist/ytsync-linux-amd64 ./cmd/ytsync
+          GOOS=linux GOARCH=arm64 go build -o dist/ytsync-linux-arm64 ./cmd/ytsync
+          
+          # macOS
+          GOOS=darwin GOARCH=amd64 go build -o dist/ytsync-darwin-amd64 ./cmd/ytsync
+          GOOS=darwin GOARCH=arm64 go build -o dist/ytsync-darwin-arm64 ./cmd/ytsync
+          
+          # Windows
+          GOOS=windows GOARCH=amd64 go build -o dist/ytsync-windows-amd64.exe ./cmd/ytsync
+
+      - name: Verify builds
+        run: |
+          ls -lh dist/
+          file dist/*
