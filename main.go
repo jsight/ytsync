@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -263,6 +264,7 @@ func cmdDownload(args []string) {
 	audioOnly := fs.Bool("audio-only", false, "Download audio only (MP3)")
 	outputDir := fs.String("dir", ".", "Directory to save video")
 	format := fs.String("format", "best", "Video format: best, mp4, webm, or audio quality")
+	noMetadata := fs.Bool("no-metadata", false, "Skip downloading metadata JSON")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: ytsync download [flags] <video-id>\n\nFlags:\n")
 		fs.PrintDefaults()
@@ -283,6 +285,19 @@ func cmdDownload(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Fetch metadata first if not skipped
+	var metadata *youtube.VideoMetadata
+	if !*noMetadata {
+		fmt.Fprintf(os.Stderr, "Fetching metadata...\n")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		metadata, err = youtube.FetchMetadata(ctx, videoID, cfg.YtdlpPath)
+		cancel()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not fetch metadata: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Continuing with download without metadata...\n")
+		}
 	}
 
 	// Build yt-dlp arguments
@@ -321,7 +336,42 @@ func cmdDownload(args []string) {
 		os.Exit(1)
 	}
 
+	// Save metadata if we have it
+	if metadata != nil {
+		metadataPath := fmt.Sprintf("%s/%s.json", *outputDir, sanitizeFilename(metadata.Title))
+		if err := saveMetadata(metadata, metadataPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not save metadata: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "Metadata saved to: %s\n", metadataPath)
+		}
+	}
+
 	fmt.Fprintf(os.Stderr, "Download complete!\n")
+}
+
+// saveMetadata saves video metadata to a JSON file.
+func saveMetadata(metadata *youtube.VideoMetadata, path string) error {
+	data, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal metadata: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("write metadata file: %w", err)
+	}
+
+	return nil
+}
+
+// sanitizeFilename removes/replaces characters that are invalid in filenames.
+func sanitizeFilename(s string) string {
+	// Replace invalid characters with underscores
+	replacements := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+	result := s
+	for _, char := range replacements {
+		result = strings.ReplaceAll(result, char, "_")
+	}
+	return result
 }
 
 func truncate(s string, maxLen int) string {
