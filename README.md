@@ -25,10 +25,9 @@ go build -o ytsync .
 ### Requirements
 
 - Go 1.25+
-- `yt-dlp` (recommended) - [install](https://github.com/yt-dlp/yt-dlp)
-  - For listing videos: required
-  - For downloading: required
-  - For transcripts: required to fetch metadata
+- `yt-dlp` (required) - [install](https://github.com/yt-dlp/yt-dlp)
+
+All functionality depends on yt-dlp for video listing, downloading, and transcript metadata.
 
 ## Quick Start
 
