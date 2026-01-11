@@ -19,7 +19,7 @@ ytsync is a command-line tool to list, download, and extract transcripts from Yo
 ```bash
 git clone https://github.com/jsight/ytsync.git
 cd ytsync
-go build -o ytsync .
+go build -o ytsync ./cli
 ```
 
 ### Requirements

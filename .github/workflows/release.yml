@@ -25,19 +25,19 @@ jobs:
           mkdir -p dist
           
           # Linux AMD64
-          GOOS=linux GOARCH=amd64 go build -o dist/ytsync-linux-amd64 ./cmd/ytsync
+          GOOS=linux GOARCH=amd64 go build -o dist/ytsync-linux-amd64 ./cli
           
           # Linux ARM64
-          GOOS=linux GOARCH=arm64 go build -o dist/ytsync-linux-arm64 ./cmd/ytsync
+          GOOS=linux GOARCH=arm64 go build -o dist/ytsync-linux-arm64 ./cli
           
           # macOS AMD64
-          GOOS=darwin GOARCH=amd64 go build -o dist/ytsync-darwin-amd64 ./cmd/ytsync
+          GOOS=darwin GOARCH=amd64 go build -o dist/ytsync-darwin-amd64 ./cli
           
           # macOS ARM64
-          GOOS=darwin GOARCH=arm64 go build -o dist/ytsync-darwin-arm64 ./cmd/ytsync
+          GOOS=darwin GOARCH=arm64 go build -o dist/ytsync-darwin-arm64 ./cli
           
           # Windows AMD64
-          GOOS=windows GOARCH=amd64 go build -o dist/ytsync-windows-amd64.exe ./cmd/ytsync
+          GOOS=windows GOARCH=amd64 go build -o dist/ytsync-windows-amd64.exe ./cli
 
       - name: Create SHA256 checksums
         run: |
