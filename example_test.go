@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"testing"
 )
 
 // ExampleListVideos demonstrates how to list videos from a YouTube channel.
@@ -108,8 +109,8 @@ func ExampleFetchVideoMetadata() {
 	}
 }
 
-// ExampleErrorHandling demonstrates error handling patterns.
-func ExampleErrorHandling() {
+// TestErrorHandling demonstrates error handling patterns.
+func TestErrorHandling(t *testing.T) {
 	ctx := context.Background()
 
 	// Demonstrate error handling
@@ -117,19 +118,19 @@ func ExampleErrorHandling() {
 	if err != nil {
 		// Check for specific sentinel errors
 		if errors.Is(err, ErrInvalidURL) {
-			fmt.Println("The provided URL is invalid")
+			t.Log("The provided URL is invalid")
 		}
 		if errors.Is(err, ErrChannelNotFound) {
-			fmt.Println("The channel was not found")
+			t.Log("The channel was not found")
 		}
 		if errors.Is(err, ErrRateLimited) {
-			fmt.Println("Rate limited, please try again later")
+			t.Log("Rate limited, please try again later")
 		}
 
 		// Extract wrapped error details
 		var listerErr *ListerError
 		if errors.As(err, &listerErr) {
-			fmt.Printf("Listing failed for %s: %v\n", listerErr.Channel, listerErr.Err)
+			t.Logf("Listing failed for %s: %v\n", listerErr.Channel, listerErr.Err)
 		}
 	}
 }
