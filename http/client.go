@@ -14,8 +14,9 @@ import (
 
 // Client wraps an HTTP client with retry logic and rate limit handling.
 type Client struct {
-	base   *http.Client
-	config *Config
+	base        *http.Client
+	config      *Config
+	rateLimiter *RateLimiter
 }
 
 // Config holds HTTP client configuration including retry and rate limit settings.
@@ -31,6 +32,39 @@ type Config struct {
 
 	// User agent for HTTP requests
 	UserAgent string
+
+	// Rate limiter configuration
+	RateLimiter RateLimiterConfig
+
+	// Connection pool configuration
+	Transport TransportConfig
+}
+
+// TransportConfig configures the HTTP transport (connection pooling).
+type TransportConfig struct {
+	// MaxIdleConns is the maximum number of idle connections across all hosts.
+	// Default: 20
+	MaxIdleConns int
+
+	// MaxIdleConnsPerHost is the maximum idle connections per host.
+	// Default: 10
+	MaxIdleConnsPerHost int
+
+	// MaxConnsPerHost is the maximum concurrent connections per host.
+	// Default: 20
+	MaxConnsPerHost int
+
+	// IdleConnTimeout is the maximum amount of time an idle connection can remain open.
+	// Default: 90 seconds
+	IdleConnTimeout time.Duration
+
+	// ForceAttemptHTTP2 forces HTTP/2 for connections to servers that don't explicitly support it.
+	// Default: true
+	ForceAttemptHTTP2 bool
+
+	// DisableKeepAlives disables HTTP keep-alives (connection reuse).
+	// Default: false (keep-alives enabled)
+	DisableKeepAlives bool
 }
 
 // DefaultConfig returns sensible defaults for HTTP client configuration.
@@ -40,6 +74,20 @@ func DefaultConfig() *Config {
 		Retry:         retry.DefaultConfig(),
 		MaxConcurrent: 10,
 		UserAgent:     "ytsync/1.0",
+		RateLimiter:   DefaultRateLimiterConfig(),
+		Transport:     DefaultTransportConfig(),
+	}
+}
+
+// DefaultTransportConfig returns sensible defaults for HTTP transport configuration.
+func DefaultTransportConfig() TransportConfig {
+	return TransportConfig{
+		MaxIdleConns:        20,
+		MaxIdleConnsPerHost: 10,
+		MaxConnsPerHost:     20,
+		IdleConnTimeout:     90 * time.Second,
+		ForceAttemptHTTP2:   true,
+		DisableKeepAlives:   false,
 	}
 }
 
@@ -49,13 +97,30 @@ func New(cfg *Config) *Client {
 		cfg = DefaultConfig()
 	}
 
+	// Configure transport with optimized settings for YouTube interactions
+	transport := &http.Transport{
+		// Connection pool settings
+		MaxIdleConns:        cfg.Transport.MaxIdleConns,
+		MaxIdleConnsPerHost: cfg.Transport.MaxIdleConnsPerHost,
+		MaxConnsPerHost:     cfg.Transport.MaxConnsPerHost,
+		IdleConnTimeout:     cfg.Transport.IdleConnTimeout,
+
+		// HTTP/2 support
+		ForceAttemptHTTP2: cfg.Transport.ForceAttemptHTTP2,
+
+		// TCP keepalive
+		DisableKeepAlives: cfg.Transport.DisableKeepAlives,
+	}
+
 	base := &http.Client{
-		Timeout: cfg.Timeout,
+		Timeout:   cfg.Timeout,
+		Transport: transport,
 	}
 
 	return &Client{
-		base:   base,
-		config: cfg,
+		base:        base,
+		config:      cfg,
+		rateLimiter: NewRateLimiter(cfg.RateLimiter),
 	}
 }
 
@@ -74,6 +139,11 @@ func (c *Client) Get(ctx context.Context, url string) (*Response, error) {
 // Do performs an HTTP request with retry logic and rate limit handling.
 // It automatically retries on transient failures and detects rate limiting.
 func (c *Client) Do(ctx context.Context, method, url string, body io.Reader, headers map[string]string) (*Response, error) {
+	// Wait for rate limit before attempting request
+	if err := c.rateLimiter.Wait(ctx, url); err != nil {
+		return nil, err
+	}
+
 	var lastResp *http.Response
 
 	err := retry.Do(ctx, c.config.Retry, c.isRetryableHTTPError, func(ctx context.Context) error {
@@ -186,8 +256,15 @@ func (c *Client) parseRetryAfter(header http.Header) time.Duration {
 	return 0
 }
 
-// Close closes the HTTP client connections.
+// Close closes the HTTP client connections and releases all resources.
 func (c *Client) Close() error {
-	c.base.CloseIdleConnections()
+	if c.base != nil && c.base.Transport != nil {
+		c.base.CloseIdleConnections()
+	}
 	return nil
+}
+
+// GetTransportConfig returns the transport configuration being used.
+func (c *Client) GetTransportConfig() TransportConfig {
+	return c.config.Transport
 }
