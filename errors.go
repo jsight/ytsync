@@ -1,7 +1,6 @@
 package ytsync
 
 import (
-	"errors"
 	"ytsync/retry"
 	"ytsync/storage"
 	"ytsync/youtube"
