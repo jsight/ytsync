@@ -350,6 +350,370 @@ func TestStorageError(t *testing.T) {
 	}
 }
 
+func TestSyncState_CanResume(t *testing.T) {
+	tests := []struct {
+		name  string
+		state *SyncState
+		want  bool
+	}{
+		{
+			name:  "nil state",
+			state: nil,
+			want:  false,
+		},
+		{
+			name: "idle status",
+			state: &SyncState{
+				Status:            SyncStatusIdle,
+				Strategy:          StrategyInnertube,
+				ContinuationToken: "token123",
+			},
+			want: false,
+		},
+		{
+			name: "innertube with valid token",
+			state: &SyncState{
+				Status:                SyncStatusSyncing,
+				Strategy:              StrategyInnertube,
+				ContinuationToken:     "token123",
+				ContinuationExpiresAt: time.Now().Add(1 * time.Hour),
+			},
+			want: true,
+		},
+		{
+			name: "innertube with expired token",
+			state: &SyncState{
+				Status:                SyncStatusSyncing,
+				Strategy:              StrategyInnertube,
+				ContinuationToken:     "token123",
+				ContinuationExpiresAt: time.Now().Add(-1 * time.Hour),
+			},
+			want: false,
+		},
+		{
+			name: "innertube with empty token",
+			state: &SyncState{
+				Status:   SyncStatusSyncing,
+				Strategy: StrategyInnertube,
+			},
+			want: false,
+		},
+		{
+			name: "api with valid page token",
+			state: &SyncState{
+				Status:       SyncStatusSyncing,
+				Strategy:     StrategyAPI,
+				APIPageToken: "pageToken123",
+			},
+			want: true,
+		},
+		{
+			name: "api with empty page token",
+			state: &SyncState{
+				Status:   SyncStatusSyncing,
+				Strategy: StrategyAPI,
+			},
+			want: false,
+		},
+		{
+			name: "rss never resumable",
+			state: &SyncState{
+				Status:   SyncStatusSyncing,
+				Strategy: StrategyRSS,
+			},
+			want: false,
+		},
+		{
+			name: "ytdlp never resumable",
+			state: &SyncState{
+				Status:   SyncStatusSyncing,
+				Strategy: StrategyYtdlp,
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.state.CanResume(); got != tt.want {
+				t.Errorf("CanResume() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSyncState_HasExpiredToken(t *testing.T) {
+	tests := []struct {
+		name  string
+		state *SyncState
+		want  bool
+	}{
+		{
+			name:  "nil state",
+			state: nil,
+			want:  false,
+		},
+		{
+			name: "innertube expired",
+			state: &SyncState{
+				Strategy:              StrategyInnertube,
+				ContinuationToken:     "token123",
+				ContinuationExpiresAt: time.Now().Add(-1 * time.Hour),
+			},
+			want: true,
+		},
+		{
+			name: "innertube not expired",
+			state: &SyncState{
+				Strategy:              StrategyInnertube,
+				ContinuationToken:     "token123",
+				ContinuationExpiresAt: time.Now().Add(1 * time.Hour),
+			},
+			want: false,
+		},
+		{
+			name: "innertube no token",
+			state: &SyncState{
+				Strategy: StrategyInnertube,
+			},
+			want: false,
+		},
+		{
+			name: "api tokens don't expire",
+			state: &SyncState{
+				Strategy:     StrategyAPI,
+				APIPageToken: "pageToken123",
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.state.HasExpiredToken(); got != tt.want {
+				t.Errorf("HasExpiredToken() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSyncState_ClearPaginationState(t *testing.T) {
+	state := &SyncState{
+		ChannelID:             "ch123",
+		ContinuationToken:     "token123",
+		ContinuationExpiresAt: time.Now(),
+		APIPageToken:          "page123",
+		APIPlaylistID:         "PL123",
+		APIQuotaUsed:          100,
+		NewestVideoTimestamp:  time.Now(),
+		RSSRequiresFullSync:   true,
+		LastVideoID:           "vid123",
+		VideosProcessed:       50,
+		SyncStartedAt:         time.Now(),
+		LastPageFetchedAt:     time.Now(),
+	}
+
+	state.ClearPaginationState()
+
+	if state.ChannelID != "ch123" {
+		t.Error("ClearPaginationState() should not clear ChannelID")
+	}
+	if state.ContinuationToken != "" {
+		t.Error("ClearPaginationState() should clear ContinuationToken")
+	}
+	if state.APIPageToken != "" {
+		t.Error("ClearPaginationState() should clear APIPageToken")
+	}
+	if state.APIPlaylistID != "" {
+		t.Error("ClearPaginationState() should clear APIPlaylistID")
+	}
+	if state.APIQuotaUsed != 0 {
+		t.Error("ClearPaginationState() should clear APIQuotaUsed")
+	}
+	if !state.NewestVideoTimestamp.IsZero() {
+		t.Error("ClearPaginationState() should clear NewestVideoTimestamp")
+	}
+	if state.RSSRequiresFullSync {
+		t.Error("ClearPaginationState() should clear RSSRequiresFullSync")
+	}
+	if state.VideosProcessed != 0 {
+		t.Error("ClearPaginationState() should clear VideosProcessed")
+	}
+
+	// Test nil safety
+	var nilState *SyncState
+	nilState.ClearPaginationState() // Should not panic
+}
+
+func TestSyncState_StartSync(t *testing.T) {
+	state := &SyncState{
+		ChannelID:         "ch123",
+		ContinuationToken: "old_token",
+		Status:            SyncStatusIdle,
+		LastError:         "previous error",
+	}
+
+	state.StartSync(StrategyAPI)
+
+	if state.Strategy != StrategyAPI {
+		t.Errorf("StartSync() Strategy = %v, want %v", state.Strategy, StrategyAPI)
+	}
+	if state.Status != SyncStatusSyncing {
+		t.Errorf("StartSync() Status = %v, want %v", state.Status, SyncStatusSyncing)
+	}
+	if state.LastError != "" {
+		t.Error("StartSync() should clear LastError")
+	}
+	if state.SyncStartedAt.IsZero() {
+		t.Error("StartSync() should set SyncStartedAt")
+	}
+	if state.ContinuationToken != "" {
+		t.Error("StartSync() should clear pagination state")
+	}
+}
+
+func TestSyncState_CompleteSync(t *testing.T) {
+	state := &SyncState{
+		ChannelID:         "ch123",
+		ContinuationToken: "token",
+		APIPageToken:      "page",
+		Status:            SyncStatusSyncing,
+		VideosProcessed:   100,
+	}
+
+	state.CompleteSync()
+
+	if state.Status != SyncStatusIdle {
+		t.Errorf("CompleteSync() Status = %v, want %v", state.Status, SyncStatusIdle)
+	}
+	if state.LastSyncAt.IsZero() {
+		t.Error("CompleteSync() should set LastSyncAt")
+	}
+	if state.ContinuationToken != "" || state.APIPageToken != "" {
+		t.Error("CompleteSync() should clear pagination state")
+	}
+}
+
+func TestSyncState_FailSync(t *testing.T) {
+	state := &SyncState{
+		ChannelID:         "ch123",
+		ContinuationToken: "token",
+		Status:            SyncStatusSyncing,
+	}
+
+	state.FailSync("connection timeout")
+
+	if state.Status != SyncStatusError {
+		t.Errorf("FailSync() Status = %v, want %v", state.Status, SyncStatusError)
+	}
+	if state.LastError != "connection timeout" {
+		t.Errorf("FailSync() LastError = %q, want %q", state.LastError, "connection timeout")
+	}
+	// Should preserve pagination state for resume
+	if state.ContinuationToken != "token" {
+		t.Error("FailSync() should preserve ContinuationToken for resume")
+	}
+}
+
+func TestSyncState_UpdateTokens(t *testing.T) {
+	t.Run("innertube token", func(t *testing.T) {
+		state := &SyncState{ChannelID: "ch123"}
+		state.UpdateInnertubeToken("newtoken", 2*time.Hour)
+
+		if state.ContinuationToken != "newtoken" {
+			t.Errorf("UpdateInnertubeToken() Token = %q, want %q", state.ContinuationToken, "newtoken")
+		}
+		if state.ContinuationExpiresAt.IsZero() {
+			t.Error("UpdateInnertubeToken() should set expiry")
+		}
+		if state.LastPageFetchedAt.IsZero() {
+			t.Error("UpdateInnertubeToken() should set LastPageFetchedAt")
+		}
+
+		// Clear token
+		state.UpdateInnertubeToken("", 0)
+		if !state.ContinuationExpiresAt.IsZero() {
+			t.Error("UpdateInnertubeToken() with empty token should clear expiry")
+		}
+	})
+
+	t.Run("api page token", func(t *testing.T) {
+		state := &SyncState{ChannelID: "ch123"}
+		state.UpdateAPIPageToken("pageToken", "playlistID", 10)
+
+		if state.APIPageToken != "pageToken" {
+			t.Errorf("UpdateAPIPageToken() Token = %q, want %q", state.APIPageToken, "pageToken")
+		}
+		if state.APIPlaylistID != "playlistID" {
+			t.Errorf("UpdateAPIPageToken() PlaylistID = %q, want %q", state.APIPlaylistID, "playlistID")
+		}
+		if state.APIQuotaUsed != 10 {
+			t.Errorf("UpdateAPIPageToken() QuotaUsed = %d, want %d", state.APIQuotaUsed, 10)
+		}
+
+		// Accumulate quota
+		state.UpdateAPIPageToken("nextPage", "", 5)
+		if state.APIQuotaUsed != 15 {
+			t.Errorf("UpdateAPIPageToken() should accumulate quota, got %d", state.APIQuotaUsed)
+		}
+	})
+
+	t.Run("rss state", func(t *testing.T) {
+		state := &SyncState{ChannelID: "ch123"}
+		now := time.Now()
+		state.UpdateRSSState(now, false)
+
+		if !state.NewestVideoTimestamp.Equal(now) {
+			t.Errorf("UpdateRSSState() Timestamp = %v, want %v", state.NewestVideoTimestamp, now)
+		}
+		if state.RSSRequiresFullSync {
+			t.Error("UpdateRSSState() RequiresFullSync should be false")
+		}
+
+		state.UpdateRSSState(time.Time{}, true)
+		if !state.NewestVideoTimestamp.Equal(now) {
+			t.Error("UpdateRSSState() with zero time should preserve existing timestamp")
+		}
+		if !state.RSSRequiresFullSync {
+			t.Error("UpdateRSSState() RequiresFullSync should be true")
+		}
+	})
+}
+
+func TestSyncState_IncrementProgress(t *testing.T) {
+	state := &SyncState{ChannelID: "ch123"}
+
+	state.IncrementProgress(10, "vid1")
+	if state.VideosProcessed != 10 {
+		t.Errorf("IncrementProgress() VideosProcessed = %d, want 10", state.VideosProcessed)
+	}
+	if state.LastVideoID != "vid1" {
+		t.Errorf("IncrementProgress() LastVideoID = %q, want %q", state.LastVideoID, "vid1")
+	}
+
+	state.IncrementProgress(5, "vid2")
+	if state.VideosProcessed != 15 {
+		t.Errorf("IncrementProgress() should accumulate, got %d", state.VideosProcessed)
+	}
+
+	// Empty video ID should not update
+	state.IncrementProgress(5, "")
+	if state.LastVideoID != "vid2" {
+		t.Error("IncrementProgress() with empty videoID should preserve existing")
+	}
+}
+
+func TestNewSyncState(t *testing.T) {
+	state := NewSyncState("ch123")
+
+	if state.ChannelID != "ch123" {
+		t.Errorf("NewSyncState() ChannelID = %q, want %q", state.ChannelID, "ch123")
+	}
+	if state.Status != SyncStatusIdle {
+		t.Errorf("NewSyncState() Status = %v, want %v", state.Status, SyncStatusIdle)
+	}
+}
+
 // newTestStore creates a temporary store for testing.
 func newTestStore(t *testing.T) *JSONStore {
 	t.Helper()

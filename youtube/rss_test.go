@@ -246,3 +246,167 @@ func TestFilterVideos(t *testing.T) {
 		})
 	}
 }
+
+func TestRSSListerListVideosIncremental(t *testing.T) {
+	client := newMockHTTPClient(http.StatusOK, SampleAtomFeed)
+	lister := NewRSSListerWithClient(client)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// First sync (no last sync time) - should return all videos
+	result, err := lister.ListVideosIncremental(ctx, "UCuAXFkgsw1L7xaCfnd5JJOw", time.Time{}, nil)
+	if err != nil {
+		t.Fatalf("ListVideosIncremental() error = %v", err)
+	}
+
+	if result.TotalInFeed != 2 {
+		t.Errorf("TotalInFeed = %d, want 2", result.TotalInFeed)
+	}
+	if result.NewVideosCount != 2 {
+		t.Errorf("NewVideosCount = %d, want 2", result.NewVideosCount)
+	}
+	if result.GapDetected {
+		t.Error("GapDetected should be false for first sync")
+	}
+	if result.NewestTimestamp.IsZero() {
+		t.Error("NewestTimestamp should be set")
+	}
+	if result.OldestTimestamp.IsZero() {
+		t.Error("OldestTimestamp should be set")
+	}
+}
+
+func TestRSSListerIncrementalWithLastSync(t *testing.T) {
+	client := newMockHTTPClient(http.StatusOK, SampleAtomFeed)
+	lister := NewRSSListerWithClient(client)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// The sample feed has videos from 2020-01-01 and 2020-01-02
+	// Last sync was 2020-01-01 at 12:00 - should only return the newer video
+	lastSync := time.Date(2020, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	result, err := lister.ListVideosIncremental(ctx, "UCuAXFkgsw1L7xaCfnd5JJOw", lastSync, nil)
+	if err != nil {
+		t.Fatalf("ListVideosIncremental() error = %v", err)
+	}
+
+	// Should only have 1 video (the one from 2020-01-02)
+	if result.NewVideosCount != 1 {
+		t.Errorf("NewVideosCount = %d, want 1", result.NewVideosCount)
+	}
+	if len(result.Videos) != 1 {
+		t.Errorf("len(Videos) = %d, want 1", len(result.Videos))
+	}
+}
+
+func TestRSSListerIncrementalGapDetection(t *testing.T) {
+	client := newMockHTTPClient(http.StatusOK, SampleAtomFeed)
+	lister := NewRSSListerWithClient(client)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// The sample feed has videos from 2020-01-01 and 2020-01-02
+	// Last sync was 2019-12-01 - oldest video (2020-01-01) is way after last sync
+	// This means a gap should be detected (videos may have been pushed out)
+	lastSync := time.Date(2019, 12, 1, 0, 0, 0, 0, time.UTC)
+
+	result, err := lister.ListVideosIncremental(ctx, "UCuAXFkgsw1L7xaCfnd5JJOw", lastSync, nil)
+	if err != nil {
+		t.Fatalf("ListVideosIncremental() error = %v", err)
+	}
+
+	// Gap should be detected because the oldest video (2020-01-01) is significantly
+	// after our last sync (2019-12-01) - meaning videos may have been pushed out
+	if !result.GapDetected {
+		t.Error("GapDetected should be true when oldest feed video is after last sync")
+	}
+}
+
+func TestRSSListerIncrementalNoGap(t *testing.T) {
+	client := newMockHTTPClient(http.StatusOK, SampleAtomFeed)
+	lister := NewRSSListerWithClient(client)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// The sample feed has videos from 2020-01-01 and 2020-01-02
+	// Last sync was 2020-01-01 at 00:00 (same as oldest video)
+	// So no gap - we're in sync with the feed
+	lastSync := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	result, err := lister.ListVideosIncremental(ctx, "UCuAXFkgsw1L7xaCfnd5JJOw", lastSync, nil)
+	if err != nil {
+		t.Fatalf("ListVideosIncremental() error = %v", err)
+	}
+
+	// No gap should be detected
+	if result.GapDetected {
+		t.Error("GapDetected should be false when oldest feed video is at or before last sync")
+	}
+}
+
+func TestRSSIncrementalResultShouldTriggerFullSync(t *testing.T) {
+	tests := []struct {
+		name   string
+		result *RSSIncrementalResult
+		want   bool
+	}{
+		{
+			name:   "nil result",
+			result: nil,
+			want:   true,
+		},
+		{
+			name: "gap detected",
+			result: &RSSIncrementalResult{
+				GapDetected: true,
+			},
+			want: true,
+		},
+		{
+			name: "no gap",
+			result: &RSSIncrementalResult{
+				GapDetected: false,
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.result.ShouldTriggerFullSync(); got != tt.want {
+				t.Errorf("ShouldTriggerFullSync() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRSSListerIncrementalError(t *testing.T) {
+	client := newMockHTTPClient(http.StatusNotFound, "")
+	lister := NewRSSListerWithClient(client)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := lister.ListVideosIncremental(ctx, "UCuAXFkgsw1L7xaCfnd5JJOw", time.Time{}, nil)
+	if err == nil {
+		t.Error("ListVideosIncremental() should return error for 404")
+	}
+}
+
+func TestRSSListerIncrementalInvalidChannel(t *testing.T) {
+	client := newMockHTTPClient(http.StatusOK, SampleAtomFeed)
+	lister := NewRSSListerWithClient(client)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := lister.ListVideosIncremental(ctx, "invalid-url", time.Time{}, nil)
+	if err == nil {
+		t.Error("ListVideosIncremental() should return error for invalid channel URL")
+	}
+}

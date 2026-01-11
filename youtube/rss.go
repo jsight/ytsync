@@ -116,6 +116,157 @@ func (r *RSSLister) SupportsFullHistory() bool {
 	return false
 }
 
+// RSSIncrementalResult contains the result of an incremental RSS sync.
+type RSSIncrementalResult struct {
+	// Videos is the list of new videos (after filtering by last sync time).
+	Videos []VideoInfo
+	// NewestTimestamp is the published time of the most recent video in the feed.
+	NewestTimestamp time.Time
+	// OldestTimestamp is the published time of the oldest video in the feed.
+	OldestTimestamp time.Time
+	// GapDetected is true if the oldest video in the feed is newer than the last sync,
+	// indicating that videos may have been missed and a full sync is recommended.
+	GapDetected bool
+	// TotalInFeed is the total number of videos in the RSS feed (typically 15).
+	TotalInFeed int
+	// NewVideosCount is the number of videos newer than the last sync time.
+	NewVideosCount int
+}
+
+// ListVideosIncremental performs an incremental sync using the RSS feed.
+// It detects gaps (missed videos) and returns metadata about the sync.
+//
+// Parameters:
+//   - lastSyncTime: The time of the last successful sync. Pass zero time for first sync.
+//
+// Returns RSSIncrementalResult with gap detection and video list.
+func (r *RSSLister) ListVideosIncremental(ctx context.Context, channelURL string, lastSyncTime time.Time, opts *ListOptions) (*RSSIncrementalResult, error) {
+	channelID, err := extractChannelID(channelURL)
+	if err != nil {
+		return nil, &ListerError{Source: "rss", Channel: channelURL, Err: err}
+	}
+
+	var videos []VideoInfo
+	cfg := r.RetryConfig
+	if cfg == nil {
+		defaultCfg := retry.DefaultConfig()
+		cfg = &defaultCfg
+	}
+
+	err = retry.Do(ctx, *cfg, rssErrorClassifier, func(ctx context.Context) error {
+		feedURL := fmt.Sprintf(rssFeedURLTemplate, channelID)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
+		if err != nil {
+			return &ListerError{Source: "rss", Channel: channelURL, Err: err}
+		}
+
+		resp, err := r.client.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return &ListerError{Source: "rss", Channel: channelURL, Err: ErrNetworkTimeout}
+			}
+			return &ListerError{Source: "rss", Channel: channelURL, Err: err}
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusNotFound {
+			return &ListerError{Source: "rss", Channel: channelURL, Err: ErrChannelNotFound}
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return &ListerError{Source: "rss", Channel: channelURL, Err: ErrRateLimited}
+		}
+		if resp.StatusCode != http.StatusOK {
+			return &ListerError{Source: "rss", Channel: channelURL,
+				Err: fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)}
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return &ListerError{Source: "rss", Channel: channelURL, Err: err}
+		}
+
+		feed, err := parseAtomFeed(body)
+		if err != nil {
+			return &ListerError{Source: "rss", Channel: channelURL, Err: err}
+		}
+
+		videos = feedToVideoInfo(feed, channelID)
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate timestamps from all videos in feed
+	var newestTimestamp, oldestTimestamp time.Time
+	if len(videos) > 0 {
+		newestTimestamp = videos[0].Published
+		oldestTimestamp = videos[0].Published
+		for _, v := range videos {
+			if v.Published.After(newestTimestamp) {
+				newestTimestamp = v.Published
+			}
+			if v.Published.Before(oldestTimestamp) {
+				oldestTimestamp = v.Published
+			}
+		}
+	}
+
+	// Detect gap: if oldest video in RSS is newer than last sync, we may have missed videos
+	gapDetected := false
+	if !lastSyncTime.IsZero() && !oldestTimestamp.IsZero() {
+		// If the oldest video in the RSS feed is significantly newer than our last sync,
+		// it means videos between lastSync and oldestTimestamp may have been pushed out of the feed.
+		// We add a small grace period (1 minute) to account for timing differences.
+		gracePeriod := 1 * time.Minute
+		if oldestTimestamp.After(lastSyncTime.Add(gracePeriod)) {
+			gapDetected = true
+		}
+	}
+
+	// Filter videos to only those after lastSyncTime
+	totalInFeed := len(videos)
+	var newVideos []VideoInfo
+	if !lastSyncTime.IsZero() {
+		for _, v := range videos {
+			if v.Published.After(lastSyncTime) {
+				newVideos = append(newVideos, v)
+			}
+		}
+	} else {
+		// First sync - return all videos
+		newVideos = videos
+	}
+
+	// Apply additional filters from opts
+	if opts != nil {
+		newVideos = filterVideos(newVideos, opts)
+	}
+
+	return &RSSIncrementalResult{
+		Videos:          newVideos,
+		NewestTimestamp: newestTimestamp,
+		OldestTimestamp: oldestTimestamp,
+		GapDetected:     gapDetected,
+		TotalInFeed:     totalInFeed,
+		NewVideosCount:  len(newVideos),
+	}, nil
+}
+
+// ShouldTriggerFullSync returns true if the RSS sync indicates a full sync is needed.
+// This happens when:
+// 1. A gap is detected (missed videos)
+// 2. No videos are returned but sync state indicates there should be videos
+// 3. This is the first sync (lastSyncTime is zero)
+func (r *RSSIncrementalResult) ShouldTriggerFullSync() bool {
+	if r == nil {
+		return true
+	}
+	return r.GapDetected
+}
+
 // atomFeed represents a YouTube Atom feed structure.
 type atomFeed struct {
 	XMLName xml.Name    `xml:"feed"`

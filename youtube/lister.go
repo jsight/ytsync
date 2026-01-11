@@ -44,6 +44,41 @@ type ListOptions struct {
 	// ContentType specifies what type of content to list.
 	// Default is ContentTypeVideos.
 	ContentType ContentType
+
+	// --- Resumable Pagination Options ---
+
+	// ResumeToken is an opaque token for resuming pagination.
+	// For YouTube Data API v3, this is the pageToken.
+	// For Innertube, this is the continuation token.
+	ResumeToken string
+
+	// ResumePlaylistID is the uploads playlist ID for API-based listing.
+	// When provided, skips the playlist ID lookup (saves quota).
+	ResumePlaylistID string
+
+	// OnProgress is called after each page of results is fetched.
+	// It receives the current pagination state and any error that occurred.
+	// Return a non-nil error to stop pagination.
+	OnProgress func(state *PaginationProgress) error
+}
+
+// PaginationProgress reports the current state of paginated listing.
+// This is passed to the OnProgress callback for state persistence.
+type PaginationProgress struct {
+	// Token is the next page token (empty if pagination complete).
+	Token string
+	// PlaylistID is the uploads playlist ID (API lister only).
+	PlaylistID string
+	// VideosRetrieved is the total count of videos fetched so far.
+	VideosRetrieved int
+	// LastVideoID is the ID of the last video retrieved.
+	LastVideoID string
+	// QuotaUsed is the estimated quota consumed (API lister only).
+	QuotaUsed int
+	// Complete is true if pagination has finished.
+	Complete bool
+	// Error is non-nil if pagination stopped due to an error.
+	Error error
 }
 
 // SortOrder specifies how videos should be sorted.

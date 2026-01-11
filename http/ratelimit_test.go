@@ -190,3 +190,183 @@ func TestRateLimiterStats(t *testing.T) {
 		t.Error("Stats missing feeds.youtube.com")
 	}
 }
+
+func TestRateLimiterRecordRateLimitError(t *testing.T) {
+	cfg := DefaultRateLimiterConfig()
+	cfg.EnableDynamicBackoff = true
+	rl := NewRateLimiter(cfg)
+
+	url := "https://www.youtube.com/api/test"
+
+	// First error should return initial backoff (1s)
+	backoff := rl.RecordRateLimitError(url, 0)
+	if backoff != InnertubeInitialBackoff {
+		t.Errorf("First error backoff = %v, want %v", backoff, InnertubeInitialBackoff)
+	}
+
+	// Second error should return doubled backoff (2s)
+	backoff = rl.RecordRateLimitError(url, 0)
+	expectedBackoff := time.Duration(float64(InnertubeInitialBackoff) * InnertubeBackoffMultiplier)
+	if backoff != expectedBackoff {
+		t.Errorf("Second error backoff = %v, want %v", backoff, expectedBackoff)
+	}
+
+	// Third error should return 4s
+	backoff = rl.RecordRateLimitError(url, 0)
+	expectedBackoff = time.Duration(float64(expectedBackoff) * InnertubeBackoffMultiplier)
+	if backoff != expectedBackoff {
+		t.Errorf("Third error backoff = %v, want %v", backoff, expectedBackoff)
+	}
+}
+
+func TestRateLimiterRecordRateLimitError_RetryAfterRespected(t *testing.T) {
+	cfg := DefaultRateLimiterConfig()
+	cfg.EnableDynamicBackoff = true
+	rl := NewRateLimiter(cfg)
+
+	url := "https://www.youtube.com/api/test"
+	serverRetryAfter := 30 * time.Second
+
+	// Server's Retry-After should be used if longer than calculated backoff
+	backoff := rl.RecordRateLimitError(url, serverRetryAfter)
+	if backoff != serverRetryAfter {
+		t.Errorf("Backoff = %v, want server's Retry-After %v", backoff, serverRetryAfter)
+	}
+}
+
+func TestRateLimiterBackoffState(t *testing.T) {
+	cfg := DefaultRateLimiterConfig()
+	cfg.EnableDynamicBackoff = true
+	rl := NewRateLimiter(cfg)
+
+	url := "https://www.youtube.com/api/test"
+
+	// Initially no backoff state
+	if state := rl.GetBackoffState(url); state != nil {
+		t.Error("Expected no backoff state initially")
+	}
+
+	// Record an error
+	rl.RecordRateLimitError(url, 0)
+
+	// Now should have backoff state
+	state := rl.GetBackoffState(url)
+	if state == nil {
+		t.Fatal("Expected backoff state after error")
+	}
+	if state.ConsecutiveErrors != 1 {
+		t.Errorf("ConsecutiveErrors = %d, want 1", state.ConsecutiveErrors)
+	}
+	if state.OriginalRPS == 0 {
+		t.Error("OriginalRPS should be set")
+	}
+}
+
+func TestRateLimiterRecordSuccess(t *testing.T) {
+	cfg := DefaultRateLimiterConfig()
+	cfg.EnableDynamicBackoff = true
+	rl := NewRateLimiter(cfg)
+
+	url := "https://www.youtube.com/api/test"
+
+	// Record multiple errors
+	rl.RecordRateLimitError(url, 0)
+	rl.RecordRateLimitError(url, 0)
+	rl.RecordRateLimitError(url, 0)
+
+	state := rl.GetBackoffState(url)
+	if state.ConsecutiveErrors != 3 {
+		t.Errorf("After 3 errors, ConsecutiveErrors = %d, want 3", state.ConsecutiveErrors)
+	}
+
+	// Record a success
+	rl.RecordSuccess(url)
+
+	state = rl.GetBackoffState(url)
+	if state.ConsecutiveErrors != 2 {
+		t.Errorf("After success, ConsecutiveErrors = %d, want 2", state.ConsecutiveErrors)
+	}
+}
+
+func TestRateLimiterIsBackedOff(t *testing.T) {
+	cfg := DefaultRateLimiterConfig()
+	cfg.EnableDynamicBackoff = true
+	rl := NewRateLimiter(cfg)
+
+	url := "https://www.youtube.com/api/test"
+
+	// Initially not backed off
+	if rl.IsBackedOff(url) {
+		t.Error("Should not be backed off initially")
+	}
+
+	// Record an error
+	rl.RecordRateLimitError(url, 0)
+
+	// Should be backed off
+	if !rl.IsBackedOff(url) {
+		t.Error("Should be backed off after error")
+	}
+}
+
+func TestRateLimiterRateReduction(t *testing.T) {
+	cfg := RateLimiterConfig{
+		InnertubeRPS:         2.5,
+		EnableDynamicBackoff: true,
+	}
+	rl := NewRateLimiter(cfg)
+
+	url := "https://www.youtube.com/api/test"
+	ctx := context.Background()
+
+	// Initialize the limiter
+	rl.Wait(ctx, url)
+
+	// Record multiple errors to trigger rate reduction
+	rl.RecordRateLimitError(url, 0)
+
+	state := rl.GetBackoffState(url)
+	if state.ReducedRPS == 0 {
+		t.Error("ReducedRPS should be set after error")
+	}
+	if state.ReducedRPS >= state.OriginalRPS {
+		t.Errorf("ReducedRPS (%v) should be less than OriginalRPS (%v)", state.ReducedRPS, state.OriginalRPS)
+	}
+}
+
+func TestRateLimiterDisabledDynamicBackoff(t *testing.T) {
+	cfg := DefaultRateLimiterConfig()
+	cfg.EnableDynamicBackoff = false
+	rl := NewRateLimiter(cfg)
+
+	url := "https://www.youtube.com/api/test"
+
+	// Record an error
+	backoff := rl.RecordRateLimitError(url, 0)
+
+	// Should still return initial backoff
+	if backoff != InnertubeInitialBackoff {
+		t.Errorf("Backoff = %v, want %v", backoff, InnertubeInitialBackoff)
+	}
+
+	// But no backoff state should be tracked
+	if state := rl.GetBackoffState(url); state != nil {
+		t.Error("No backoff state should be tracked when disabled")
+	}
+}
+
+func TestBackoffStateConstants(t *testing.T) {
+	// Verify constants are sensible
+	if InnertubeInitialBackoff != 1*time.Second {
+		t.Errorf("InnertubeInitialBackoff = %v, want 1s", InnertubeInitialBackoff)
+	}
+	if InnertubeMaxBackoff != 60*time.Second {
+		t.Errorf("InnertubeMaxBackoff = %v, want 60s", InnertubeMaxBackoff)
+	}
+	if InnertubeBackoffMultiplier != 2.0 {
+		t.Errorf("InnertubeBackoffMultiplier = %v, want 2.0", InnertubeBackoffMultiplier)
+	}
+	if MinRPSMultiplier != 0.25 {
+		t.Errorf("MinRPSMultiplier = %v, want 0.25", MinRPSMultiplier)
+	}
+}

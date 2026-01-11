@@ -62,6 +62,11 @@ func (a *APILister) SetFallbackLister(lister VideoLister) {
 
 // ListVideos fetches videos from the specified channel using YouTube Data API v3.
 // It gracefully falls back to the fallback lister if quota is exhausted.
+//
+// Supports resumable pagination via ListOptions:
+//   - ResumeToken: pageToken from a previous interrupted sync
+//   - ResumePlaylistID: uploads playlist ID (skips lookup, saves quota)
+//   - OnProgress: callback for persisting pagination state
 func (a *APILister) ListVideos(ctx context.Context, channelURL string, opts *ListOptions) ([]VideoInfo, error) {
 	a.mu.Lock()
 	if a.quotaExhausted && a.fallbackLister != nil {
@@ -77,10 +82,17 @@ func (a *APILister) ListVideos(ctx context.Context, channelURL string, opts *Lis
 		return nil, &ListerError{Source: "api", Channel: channelURL, Err: err}
 	}
 
-	// Get uploads playlist ID
-	uploadsPlaylistID, channelName, err := a.getUploadsPlaylistID(ctx, channelID)
-	if err != nil {
-		return nil, &ListerError{Source: "api", Channel: channelURL, Err: err}
+	// Get uploads playlist ID (or use cached one for resume)
+	var uploadsPlaylistID, channelName string
+	if opts != nil && opts.ResumePlaylistID != "" {
+		// Resume from cached playlist ID (saves 1 quota unit)
+		uploadsPlaylistID = opts.ResumePlaylistID
+		log.Printf("youtube: resuming with cached playlist ID %s", uploadsPlaylistID)
+	} else {
+		uploadsPlaylistID, channelName, err = a.getUploadsPlaylistID(ctx, channelID)
+		if err != nil {
+			return nil, &ListerError{Source: "api", Channel: channelURL, Err: err}
+		}
 	}
 
 	// List videos from the uploads playlist
@@ -271,8 +283,10 @@ func (a *APILister) getUploadsPlaylistID(ctx context.Context, channelID string) 
 }
 
 // listPlaylistVideos fetches all videos from a playlist using pagination.
+// Supports resuming from a saved pageToken and reports progress via callback.
 func (a *APILister) listPlaylistVideos(ctx context.Context, playlistID, channelID, channelName string, opts *ListOptions) ([]VideoInfo, error) {
 	var allVideos []VideoInfo
+	var quotaUsedThisSync int
 
 	cfg := a.RetryConfig
 	if cfg == nil {
@@ -280,13 +294,21 @@ func (a *APILister) listPlaylistVideos(ctx context.Context, playlistID, channelI
 		cfg = &defaultCfg
 	}
 
+	// Start from resume token if provided
 	pageToken := ""
+	if opts != nil && opts.ResumeToken != "" {
+		pageToken = opts.ResumeToken
+		log.Printf("youtube: resuming pagination from token")
+	}
+
 	for {
 		// Check if we should stop
 		if opts != nil && opts.MaxResults > 0 && len(allVideos) >= opts.MaxResults {
 			allVideos = allVideos[:opts.MaxResults]
 			break
 		}
+
+		var lastVideoID string
 
 		// Fetch a page of results
 		err := retry.Do(ctx, *cfg, apiErrorClassifier, func(ctx context.Context) error {
@@ -325,16 +347,47 @@ func (a *APILister) listPlaylistVideos(ctx context.Context, playlistID, channelI
 				}
 
 				allVideos = append(allVideos, video)
+				lastVideoID = video.ID
 			}
 
 			pageToken = resp.NextPageToken
 			a.trackQuotaUsage(1) // playlistItems.list uses 1 unit per page
+			quotaUsedThisSync++
 
 			return nil
 		})
 
 		if err != nil {
+			// Report error via progress callback if available
+			if opts != nil && opts.OnProgress != nil {
+				opts.OnProgress(&PaginationProgress{
+					Token:           pageToken,
+					PlaylistID:      playlistID,
+					VideosRetrieved: len(allVideos),
+					LastVideoID:     lastVideoID,
+					QuotaUsed:       quotaUsedThisSync,
+					Complete:        false,
+					Error:           err,
+				})
+			}
 			return nil, err
+		}
+
+		// Report progress via callback
+		if opts != nil && opts.OnProgress != nil {
+			progress := &PaginationProgress{
+				Token:           pageToken,
+				PlaylistID:      playlistID,
+				VideosRetrieved: len(allVideos),
+				LastVideoID:     lastVideoID,
+				QuotaUsed:       quotaUsedThisSync,
+				Complete:        pageToken == "",
+			}
+			if err := opts.OnProgress(progress); err != nil {
+				// Callback requested stop - return what we have
+				log.Printf("youtube: pagination stopped by callback: %v", err)
+				return allVideos, nil
+			}
 		}
 
 		// Stop if no more pages
@@ -348,11 +401,17 @@ func (a *APILister) listPlaylistVideos(ctx context.Context, playlistID, channelI
 			a.mu.Unlock()
 			log.Printf("youtube: API quota exhausted during pagination, falling back to %T", a.fallbackLister)
 			// Fallback to alternate lister for remaining videos
-			remainingOpts := *opts
-			if opts != nil && opts.MaxResults > 0 {
-				remainingOpts.MaxResults = opts.MaxResults - len(allVideos)
+			remainingOpts := &ListOptions{}
+			if opts != nil {
+				*remainingOpts = *opts
+				if opts.MaxResults > 0 {
+					remainingOpts.MaxResults = opts.MaxResults - len(allVideos)
+				}
 			}
-			fallbackVideos, err := a.fallbackLister.ListVideos(ctx, "https://www.youtube.com/channel/"+channelID, &remainingOpts)
+			// Clear resume options for fallback
+			remainingOpts.ResumeToken = ""
+			remainingOpts.ResumePlaylistID = ""
+			fallbackVideos, err := a.fallbackLister.ListVideos(ctx, "https://www.youtube.com/channel/"+channelID, remainingOpts)
 			if err != nil {
 				return allVideos, nil // Return what we got
 			}

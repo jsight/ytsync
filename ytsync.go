@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"ytsync/config"
+	"ytsync/storage"
 	"ytsync/youtube"
 )
 
@@ -163,4 +164,88 @@ func FetchVideoMetadata(ctx context.Context, videoID string) (*youtube.VideoMeta
 	}
 
 	return metadata, nil
+}
+
+// SyncOptions configures video synchronization behavior.
+type SyncOptions struct {
+	// MaxResults limits the number of videos to retrieve (0 = all available)
+	MaxResults int
+	// ContentType specifies what to list: videos, streams, or both
+	ContentType youtube.ContentType
+	// StorePath is the path to the JSON store for persisting sync state
+	// Required for incremental sync functionality
+	StorePath string
+}
+
+// SyncChannelVideos performs an efficient incremental sync of channel videos.
+// It uses the sync manager to coordinate between RSS (fast, incremental) and
+// full sync strategies. Sync state is persisted to enable gap detection and
+// resumable pagination.
+//
+// Returns a SyncResult containing the videos discovered and metadata about the sync.
+func SyncChannelVideos(ctx context.Context, channelURL string, opts *SyncOptions) (*SyncResult, error) {
+	if opts == nil {
+		opts = &SyncOptions{}
+	}
+
+	if opts.StorePath == "" {
+		return nil, fmt.Errorf("StorePath is required for sync operations")
+	}
+
+	// Initialize storage
+	store, err := storage.NewJSONStore(opts.StorePath)
+	if err != nil {
+		return nil, fmt.Errorf("initialize store: %w", err)
+	}
+	defer store.Close()
+
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+
+	// Create fallback lister (for full syncs when RSS has gaps)
+	fallback := youtube.NewYtdlpLister()
+	fallback.Path = cfg.YtdlpPath
+	fallback.Timeout = cfg.YtdlpTimeout
+
+	// Create sync manager
+	rssLister := youtube.NewRSSLister()
+	syncMgr := youtube.NewSyncManagerWithListers(rssLister, fallback, store)
+
+	// Build list options
+	listOpts := &youtube.ListOptions{
+		MaxResults:  opts.MaxResults,
+		ContentType: opts.ContentType,
+	}
+
+	// Perform sync
+	result, err := syncMgr.SyncChannelVideos(ctx, channelURL, listOpts)
+	if err != nil {
+		return nil, fmt.Errorf("sync channel videos: %w", err)
+	}
+
+	// Convert to public result type
+	return &SyncResult{
+		Videos:         result.Videos,
+		NewVideosCount: result.NewVideosCount,
+		IsIncremental:  result.IsIncremental,
+		IsFullSync:     result.IsFullSync,
+		GapDetected:    result.GapDetected,
+	}, nil
+}
+
+// SyncResult contains the outcome of a sync operation.
+type SyncResult struct {
+	// Videos is the list of videos discovered during this sync.
+	Videos []youtube.VideoInfo
+	// NewVideosCount is the number of new videos discovered.
+	NewVideosCount int
+	// IsIncremental is true if this was an incremental sync.
+	IsIncremental bool
+	// IsFullSync is true if this was a full sync.
+	IsFullSync bool
+	// GapDetected is true if RSS sync detected a gap in the feed.
+	GapDetected bool
 }

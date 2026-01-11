@@ -8,14 +8,19 @@ import (
 // RateLimitError indicates the server rate limited the request.
 // It includes the status code and optional Retry-After duration.
 type RateLimitError struct {
-	// StatusCode is the HTTP status code (429 or 503)
+	// StatusCode is the HTTP status code (429, 403, or 503)
 	StatusCode int
 	// RetryAfter indicates how long to wait before retrying
 	RetryAfter time.Duration
+	// IsBotDetection indicates this may be anti-bot protection (403)
+	IsBotDetection bool
 }
 
 // Error returns a string representation of the rate limit error.
 func (e *RateLimitError) Error() string {
+	if e.IsBotDetection {
+		return fmt.Sprintf("bot detection (status %d): retry after %v", e.StatusCode, e.RetryAfter)
+	}
 	if e.RetryAfter > 0 {
 		return fmt.Sprintf("rate limited (status %d): retry after %v", e.StatusCode, e.RetryAfter)
 	}

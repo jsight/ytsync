@@ -398,17 +398,19 @@ func innertubeErrorClassifier(err error) bool {
 		return false
 	}
 
-	// Check for rate limit errors
+	// Check for rate limit errors (429, 403, 503)
 	var rateLimitErr *ythttp.RateLimitError
 	if stderrors.As(err, &rateLimitErr) {
+		// Rate limit and bot detection errors are retryable
+		// The backoff is handled by the rate limiter
 		return true
 	}
 
 	// Check for HTTP errors
 	var httpErr *ythttp.HTTPError
 	if stderrors.As(err, &httpErr) {
-		// Retry on 5xx errors
-		return httpErr.StatusCode >= 500
+		// Retry on 5xx errors and 403 (bot detection)
+		return httpErr.StatusCode >= 500 || httpErr.StatusCode == 403
 	}
 
 	// Context errors are not retryable

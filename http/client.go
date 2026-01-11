@@ -141,6 +141,11 @@ func (c *Client) Get(ctx context.Context, url string) (*Response, error) {
 // Do performs an HTTP request with retry logic and rate limit handling.
 // It automatically retries on transient failures and detects rate limiting.
 func (c *Client) Do(ctx context.Context, method, url string, body io.Reader, headers map[string]string) (*Response, error) {
+	// Wait for any backoff period from previous rate limit errors
+	if err := c.rateLimiter.WaitForBackoff(ctx, url); err != nil {
+		return nil, err
+	}
+
 	// Wait for rate limit before attempting request
 	if err := c.rateLimiter.Wait(ctx, url); err != nil {
 		return nil, err
@@ -178,13 +183,26 @@ func (c *Client) Do(ctx context.Context, method, url string, body io.Reader, hea
 			return fmt.Errorf("http request failed: %w", err)
 		}
 
-		// Check for rate limiting
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+		// Check for rate limiting (429) or anti-bot detection (403)
+		if resp.StatusCode == http.StatusTooManyRequests ||
+			resp.StatusCode == http.StatusServiceUnavailable ||
+			resp.StatusCode == http.StatusForbidden {
 			defer resp.Body.Close()
+
+			// Parse Retry-After header
 			retryAfter := c.parseRetryAfter(resp.Header)
+
+			// Record rate limit error and get recommended backoff
+			recommendedBackoff := c.rateLimiter.RecordRateLimitError(url, retryAfter)
+			if recommendedBackoff > retryAfter {
+				retryAfter = recommendedBackoff
+			}
+
+			isBotDetection := resp.StatusCode == http.StatusForbidden
 			return &RateLimitError{
-				StatusCode: resp.StatusCode,
-				RetryAfter: retryAfter,
+				StatusCode:     resp.StatusCode,
+				RetryAfter:     retryAfter,
+				IsBotDetection: isBotDetection,
 			}
 		}
 
@@ -218,6 +236,9 @@ func (c *Client) Do(ctx context.Context, method, url string, body io.Reader, hea
 	if err != nil {
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
+
+	// Record successful request to help recover from backoff
+	c.rateLimiter.RecordSuccess(url)
 
 	return &Response{
 		StatusCode: lastResp.StatusCode,

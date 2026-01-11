@@ -226,3 +226,114 @@ func TestAPIErrorClassifier(t *testing.T) {
 		})
 	}
 }
+
+func TestPaginationProgressStruct(t *testing.T) {
+	progress := &PaginationProgress{
+		Token:           "nextPageToken123",
+		PlaylistID:      "UUabcdef123",
+		VideosRetrieved: 50,
+		LastVideoID:     "vid123",
+		QuotaUsed:       5,
+		Complete:        false,
+		Error:           nil,
+	}
+
+	if progress.Token != "nextPageToken123" {
+		t.Errorf("Token = %q, want %q", progress.Token, "nextPageToken123")
+	}
+	if progress.PlaylistID != "UUabcdef123" {
+		t.Errorf("PlaylistID = %q, want %q", progress.PlaylistID, "UUabcdef123")
+	}
+	if progress.VideosRetrieved != 50 {
+		t.Errorf("VideosRetrieved = %d, want 50", progress.VideosRetrieved)
+	}
+	if progress.LastVideoID != "vid123" {
+		t.Errorf("LastVideoID = %q, want %q", progress.LastVideoID, "vid123")
+	}
+	if progress.QuotaUsed != 5 {
+		t.Errorf("QuotaUsed = %d, want 5", progress.QuotaUsed)
+	}
+	if progress.Complete {
+		t.Error("Complete should be false")
+	}
+	if progress.Error != nil {
+		t.Errorf("Error should be nil, got %v", progress.Error)
+	}
+}
+
+func TestListOptionsResumeFields(t *testing.T) {
+	// Test that the resume fields are properly accessible
+	opts := &ListOptions{
+		MaxResults:       100,
+		ResumeToken:      "pageToken123",
+		ResumePlaylistID: "PLabcdef",
+	}
+
+	if opts.ResumeToken != "pageToken123" {
+		t.Errorf("ResumeToken = %q, want %q", opts.ResumeToken, "pageToken123")
+	}
+	if opts.ResumePlaylistID != "PLabcdef" {
+		t.Errorf("ResumePlaylistID = %q, want %q", opts.ResumePlaylistID, "PLabcdef")
+	}
+}
+
+func TestListOptionsOnProgressCallback(t *testing.T) {
+	var callCount int
+	var lastProgress *PaginationProgress
+
+	opts := &ListOptions{
+		OnProgress: func(progress *PaginationProgress) error {
+			callCount++
+			lastProgress = progress
+			return nil
+		},
+	}
+
+	// Simulate calling the callback
+	testProgress := &PaginationProgress{
+		Token:           "token",
+		VideosRetrieved: 10,
+		Complete:        false,
+	}
+	err := opts.OnProgress(testProgress)
+
+	if err != nil {
+		t.Errorf("OnProgress() error = %v", err)
+	}
+	if callCount != 1 {
+		t.Errorf("OnProgress callback called %d times, want 1", callCount)
+	}
+	if lastProgress != testProgress {
+		t.Error("OnProgress callback received different progress object")
+	}
+}
+
+func TestListOptionsOnProgressStop(t *testing.T) {
+	// Test that returning an error from OnProgress stops pagination
+	stopErr := errors.New("stop pagination")
+	opts := &ListOptions{
+		OnProgress: func(progress *PaginationProgress) error {
+			if progress.VideosRetrieved >= 20 {
+				return stopErr
+			}
+			return nil
+		},
+	}
+
+	// Simulate progress increasing
+	for i := 0; i <= 30; i += 10 {
+		testProgress := &PaginationProgress{
+			VideosRetrieved: i,
+		}
+		err := opts.OnProgress(testProgress)
+		if i >= 20 {
+			if err != stopErr {
+				t.Errorf("at %d videos, expected stopErr but got %v", i, err)
+			}
+		} else {
+			if err != nil {
+				t.Errorf("at %d videos, expected nil error but got %v", i, err)
+			}
+		}
+	}
+}
