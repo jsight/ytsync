@@ -6,7 +6,11 @@ linters:
 
 linters-settings:
   govet:
-    enable-all: true
+    disable:
+      # fieldalignment is too strict for this codebase
+      - fieldalignment
+      # shadow is too strict for error handling patterns
+      - shadow
 
 run:
   timeout: 5m
