@@ -1,9 +1,10 @@
-# ytsync - YouTube Video Downloader & Transcript Extractor
+# ytsync - YouTube Go Library & CLI Tool
 
-ytsync is a command-line tool to list, download, and extract transcripts from YouTube videos. It uses yt-dlp for robust YouTube interaction with automatic retry logic and intelligent error handling.
+ytsync is a Go library and command-line tool for interacting with YouTube. It provides programmatic access to video listing, downloading, transcript extraction, and metadata fetching. The library uses yt-dlp for robust YouTube interaction with automatic retry logic and intelligent error handling.
 
 ## Features
 
+- **Go Library** with clean API for embedding in applications
 - **Video listing** from YouTube channels (yt-dlp or RSS feeds)
 - **Video downloading** with metadata JSON (video + subtitle tracks)
 - **Transcript extraction** with timestamps from any video
@@ -11,20 +12,39 @@ ytsync is a command-line tool to list, download, and extract transcripts from Yo
 - **Robust retry logic** with exponential backoff + jitter
 - **Configuration management** via config file or environment variables
 - **Smart error reporting** for rate limits, blocks, and network issues
+- **Comprehensive error types** for programmatic error handling
 
 ## Installation
 
-### Build from source
+### As a Library
+
+```bash
+go get github.com/jsight/ytsync
+```
+
+Then import and use in your code:
+
+```go
+import "github.com/jsight/ytsync"
+
+videos, err := ytsync.ListVideos(ctx, "https://www.youtube.com/channel/UCxxxxx")
+```
+
+See [doc.go](./doc.go) for comprehensive documentation and examples.
+
+### CLI Tool
+
+Build from source:
 
 ```bash
 git clone https://github.com/jsight/ytsync.git
 cd ytsync
-go build -o ytsync ./cli
+go build -o ytsync ./cmd/ytsync
 ```
 
 ### Requirements
 
-- Go 1.24+
+- Go 1.23+
 - `yt-dlp` (required) - [install](https://github.com/yt-dlp/yt-dlp)
 
 All functionality depends on yt-dlp for video listing, downloading, and transcript metadata.
@@ -242,16 +262,21 @@ Permanent errors (channel not found, invalid URL) fail immediately.
 ## Architecture
 
 ```
-main.go                    - CLI entry point with subcommands
-├── internal/config/       - Configuration management
-├── internal/retry/        - Exponential backoff retry logic
-├── internal/youtube/
+ytsync/                    - Public library package
+├── ytsync.go              - High-level convenience API
+├── errors.go              - Centralized error types
+├── doc.go                 - Package documentation
+├── config/                - Configuration management (public)
+├── retry/                 - Exponential backoff retry logic (public)
+├── youtube/               - YouTube integration (public)
 │   ├── lister.go         - VideoLister interface
 │   ├── ytdlp.go          - yt-dlp subprocess wrapper
 │   ├── rss.go            - YouTube RSS feed parser
 │   ├── transcript.go      - Transcript extraction + parsing
 │   └── metadata.go        - Video metadata fetching
-└── internal/storage/      - (Future) Persistent storage
+├── storage/               - Persistent storage (public)
+└── cmd/ytsync/            - CLI application
+    └── main.go            - CLI entry point with subcommands
 ```
 
 ## Testing
