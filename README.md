@@ -24,7 +24,7 @@ go build -o ytsync ./cli
 
 ### Requirements
 
-- Go 1.25+
+- Go 1.24+
 - `yt-dlp` (required) - [install](https://github.com/yt-dlp/yt-dlp)
 
 All functionality depends on yt-dlp for video listing, downloading, and transcript metadata.
