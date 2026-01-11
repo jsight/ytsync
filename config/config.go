@@ -36,6 +36,14 @@ type Config struct {
 	MaxBackoff time.Duration `json:"max_backoff"`
 	// BackoffMultiplier is the multiplier for exponential backoff (must be > 1)
 	BackoffMultiplier float64 `json:"backoff_multiplier"`
+
+	// YouTubeAPIKey is the API key for YouTube Data API v3
+	YouTubeAPIKey string `json:"youtube_api_key"`
+	// YouTubeAPIEnabled enables YouTube Data API v3 for video listing (default: false)
+	YouTubeAPIEnabled bool `json:"youtube_api_enabled"`
+	// YouTubeAPIQuotaReserve is the minimum quota units to keep in reserve before
+	// falling back to yt-dlp. Default is 0 (use API until exhausted).
+	YouTubeAPIQuotaReserve int `json:"youtube_api_quota_reserve"`
 }
 
 // DefaultConfig returns configuration with safe defaults.
@@ -138,6 +146,17 @@ func (c *Config) loadFromEnv() {
 			c.MaxBackoff = d
 		}
 	}
+	if v := os.Getenv("YOUTUBE_API_KEY"); v != "" {
+		c.YouTubeAPIKey = v
+	}
+	if v := os.Getenv("YTSYNC_YOUTUBE_API_ENABLED"); v != "" {
+		c.YouTubeAPIEnabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("YTSYNC_YOUTUBE_API_QUOTA_RESERVE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.YouTubeAPIQuotaReserve = n
+		}
+	}
 }
 
 // Validate checks that configuration values are valid and consistent.
@@ -163,6 +182,12 @@ func (c *Config) Validate() error {
 	}
 	if c.BackoffMultiplier <= 1 {
 		return fmt.Errorf("backoff_multiplier must be > 1")
+	}
+	if c.YouTubeAPIEnabled && c.YouTubeAPIKey == "" {
+		return fmt.Errorf("youtube_api_key must be set when youtube_api_enabled is true")
+	}
+	if c.YouTubeAPIQuotaReserve < 0 {
+		return fmt.Errorf("youtube_api_quota_reserve must be non-negative")
 	}
 	return nil
 }

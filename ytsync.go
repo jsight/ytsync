@@ -41,6 +41,8 @@ type ListOptions struct {
 	MaxResults int
 	// UseRSS forces using RSS feed instead of yt-dlp (default: true for efficiency)
 	UseRSS bool
+	// UseYouTubeAPI forces using YouTube Data API v3 if enabled in config (default: false)
+	UseYouTubeAPI bool
 	// ContentType specifies what to list: videos, streams, or both (default: videos)
 	ContentType youtube.ContentType
 }
@@ -59,7 +61,21 @@ func ListVideosWithOptions(ctx context.Context, channelURL string, opts *ListOpt
 
 	// Create lister
 	var lister youtube.VideoLister
-	if opts.UseRSS {
+	if opts.UseYouTubeAPI && cfg.YouTubeAPIEnabled {
+		if cfg.YouTubeAPIKey == "" {
+			return nil, fmt.Errorf("YouTube API requested but no API key configured")
+		}
+		apiLister, err := youtube.NewAPILister(cfg.YouTubeAPIKey, cfg.YouTubeAPIQuotaReserve)
+		if err != nil {
+			return nil, fmt.Errorf("create api lister: %w", err)
+		}
+		// Set up fallback to yt-dlp when quota exhausted
+		ytdlp := youtube.NewYtdlpLister()
+		ytdlp.Path = cfg.YtdlpPath
+		ytdlp.Timeout = cfg.YtdlpTimeout
+		apiLister.SetFallbackLister(ytdlp)
+		lister = apiLister
+	} else if opts.UseRSS {
 		lister = youtube.NewRSSLister()
 	} else {
 		ytdlp := youtube.NewYtdlpLister()
