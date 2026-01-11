@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -26,6 +27,8 @@ func main() {
 		cmdList(args)
 	case "transcript":
 		cmdTranscript(args)
+	case "download":
+		cmdDownload(args)
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -35,11 +38,12 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `ytsync - YouTube channel lister and transcript extractor
+	fmt.Fprintf(os.Stderr, `ytsync - YouTube downloader and transcript extractor
 
 Usage:
   ytsync list [flags] <youtube-url>     List videos from a channel
   ytsync transcript [flags] <video-id>  Extract transcript from a video
+  ytsync download [flags] <video-id>    Download a video
   ytsync help                           Show this help message
 
 Examples:
@@ -47,6 +51,9 @@ Examples:
   ytsync --type both --max 10 <url>                           # Advanced listing
   ytsync transcript dQw4w9WgXcQ                               # Get transcript
   ytsync transcript dQw4w9WgXcQ --lang en,es                  # Multiple languages
+  ytsync download dQw4w9WgXcQ                                 # Download video
+  ytsync download dQw4w9WgXcQ --audio-only                    # Audio only
+  ytsync download dQw4w9WgXcQ --dir ~/Downloads               # Specify directory
 
 For help on specific command: ytsync <command> -h
 `)
@@ -249,6 +256,72 @@ func cmdTranscript(args []string) {
 	} else {
 		fmt.Println("\nNo transcript available for this video")
 	}
+}
+
+func cmdDownload(args []string) {
+	fs := flag.NewFlagSet("download", flag.ExitOnError)
+	audioOnly := fs.Bool("audio-only", false, "Download audio only (MP3)")
+	outputDir := fs.String("dir", ".", "Directory to save video")
+	format := fs.String("format", "best", "Video format: best, mp4, webm, or audio quality")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: ytsync download [flags] <video-id>\n\nFlags:\n")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	argv := fs.Args()
+	if len(argv) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: missing video-id\n")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	videoID := argv[0]
+
+	// Load config
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build yt-dlp arguments
+	ytdlpArgs := []string{
+		"-o", fmt.Sprintf("%s/%%(title)s.%%(ext)s", *outputDir),
+		"--no-warnings",
+	}
+
+	if *audioOnly {
+		ytdlpArgs = append(ytdlpArgs,
+			"-f", "bestaudio/best",
+			"-x",
+			"--audio-format", "mp3",
+			"--audio-quality", "192",
+		)
+	} else {
+		// Video download with best format
+		if *format == "best" {
+			ytdlpArgs = append(ytdlpArgs, "-f", "best[height<=1080]")
+		} else {
+			ytdlpArgs = append(ytdlpArgs, "-f", *format)
+		}
+	}
+
+	ytdlpArgs = append(ytdlpArgs, videoID)
+
+	// Run yt-dlp
+	fmt.Fprintf(os.Stderr, "Downloading %s...\n", videoID)
+	cmd := exec.Command(cfg.YtdlpPath, ytdlpArgs...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error downloading video: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(os.Stderr, "Download complete!\n")
 }
 
 func truncate(s string, maxLen int) string {
