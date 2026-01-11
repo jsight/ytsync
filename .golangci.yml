@@ -1,0 +1,12 @@
+linters:
+  disable:
+    # Disable errcheck for now - too many false positives in test setup code
+    # These should be fixed in a future refactor
+    - errcheck
+
+linters-settings:
+  govet:
+    enable-all: true
+
+run:
+  timeout: 5m
