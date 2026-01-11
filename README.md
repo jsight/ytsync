@@ -127,17 +127,19 @@ See `ytsync.json.example` for a template.
 
 ## Output Format
 
-Videos are displayed in a table format with type column:
+Videos are displayed in a compact table format:
 
 ```
-VIDEO ID      TITLE                                    PUBLISHED   DURATION  VIEWS           TYPE
-dQw4w9WgXcQ   Never Gonna Give You Up                  2009-10-25  3:32      1000000000      video
-xQw4w9WgXcZ   Live Stream with QA                      2024-01-15  0:00      250000          stream
+VIDEO ID      TITLE                                    DURATION  VIEWS           TYPE
+dQw4w9WgXcQ   Never Gonna Give You Up                  3:32      1000000000      video
+xQw4w9WgXcZ   Live Stream with QA                      0:00      250000          stream
 
 Total: 2 videos
 ```
 
 The `TYPE` column shows either `video` or `stream` depending on the content type.
+
+**Note:** Publication dates are not included in the listing to keep it fast. Use `yt-dlp` directly if you need detailed metadata for specific videos.
 
 ## Error Handling
 

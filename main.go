@@ -101,7 +101,7 @@ func main() {
 
 	// Format and print results
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "VIDEO ID\tTITLE\tPUBLISHED\tDURATION\tVIEWS\tTYPE")
+	fmt.Fprintln(w, "VIDEO ID\tTITLE\tDURATION\tVIEWS\tTYPE")
 
 	for _, v := range videos {
 		duration := ""
@@ -114,15 +114,9 @@ func main() {
 			views = fmt.Sprintf("%d", v.ViewCount)
 		}
 
-		published := "unknown"
-		if !v.Published.IsZero() {
-			published = v.Published.Format("2006-01-02")
-		}
-
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 			v.ID,
 			truncate(v.Title, 50),
-			published,
 			duration,
 			views,
 			v.Type,
