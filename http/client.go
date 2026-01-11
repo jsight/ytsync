@@ -14,10 +14,11 @@ import (
 
 // Client wraps an HTTP client with retry logic and rate limit handling.
 type Client struct {
-	base        *http.Client
-	config      *Config
-	rateLimiter *RateLimiter
-	session     *SessionManager
+	base           *http.Client
+	config         *Config
+	rateLimiter    *RateLimiter
+	circuitBreaker *CircuitBreaker
+	session        *SessionManager
 }
 
 // Config holds HTTP client configuration including retry and rate limit settings.
@@ -36,6 +37,9 @@ type Config struct {
 
 	// Rate limiter configuration
 	RateLimiter RateLimiterConfig
+
+	// Circuit breaker configuration
+	CircuitBreaker CircuitBreakerConfig
 
 	// Connection pool configuration
 	Transport TransportConfig
@@ -70,13 +74,16 @@ type TransportConfig struct {
 
 // DefaultConfig returns sensible defaults for HTTP client configuration.
 func DefaultConfig() *Config {
+	cbConfig := DefaultCircuitBreakerConfig()
+	cbConfig.IsTransientError = IsTransientHTTPError
 	return &Config{
-		Timeout:       30 * time.Second,
-		Retry:         retry.DefaultConfig(),
-		MaxConcurrent: 10,
-		UserAgent:     "ytsync/1.0",
-		RateLimiter:   DefaultRateLimiterConfig(),
-		Transport:     DefaultTransportConfig(),
+		Timeout:        30 * time.Second,
+		Retry:          retry.DefaultConfig(),
+		MaxConcurrent:  10,
+		UserAgent:      "ytsync/1.0",
+		RateLimiter:    DefaultRateLimiterConfig(),
+		CircuitBreaker: cbConfig,
+		Transport:      DefaultTransportConfig(),
 	}
 }
 
@@ -119,10 +126,11 @@ func New(cfg *Config) *Client {
 	}
 
 	return &Client{
-		base:        base,
-		config:      cfg,
-		rateLimiter: NewRateLimiter(cfg.RateLimiter),
-		session:     nil,
+		base:           base,
+		config:         cfg,
+		rateLimiter:    NewRateLimiter(cfg.RateLimiter),
+		circuitBreaker: NewCircuitBreaker(cfg.CircuitBreaker),
+		session:        nil,
 	}
 }
 
@@ -140,21 +148,32 @@ func (c *Client) Get(ctx context.Context, url string) (*Response, error) {
 
 // Do performs an HTTP request with retry logic and rate limit handling.
 // It automatically retries on transient failures and detects rate limiting.
-func (c *Client) Do(ctx context.Context, method, url string, body io.Reader, headers map[string]string) (*Response, error) {
+// The circuit breaker pattern is used to fail fast when a domain is unresponsive.
+func (c *Client) Do(ctx context.Context, method, urlStr string, body io.Reader, headers map[string]string) (*Response, error) {
+	// Extract domain for circuit breaker
+	domain := c.rateLimiter.extractDomain(urlStr)
+
+	// Check circuit breaker first - fail fast if circuit is open
+	if err := c.circuitBreaker.Allow(domain); err != nil {
+		return nil, err
+	}
+
 	// Wait for any backoff period from previous rate limit errors
-	if err := c.rateLimiter.WaitForBackoff(ctx, url); err != nil {
+	if err := c.rateLimiter.WaitForBackoff(ctx, urlStr); err != nil {
+		c.circuitBreaker.RecordFailure(domain, err)
 		return nil, err
 	}
 
 	// Wait for rate limit before attempting request
-	if err := c.rateLimiter.Wait(ctx, url); err != nil {
+	if err := c.rateLimiter.Wait(ctx, urlStr); err != nil {
+		c.circuitBreaker.RecordFailure(domain, err)
 		return nil, err
 	}
 
 	var lastResp *http.Response
 
 	err := retry.Do(ctx, c.config.Retry, c.isRetryableHTTPError, func(ctx context.Context) error {
-		req, err := http.NewRequestWithContext(ctx, method, url, body)
+		req, err := http.NewRequestWithContext(ctx, method, urlStr, body)
 		if err != nil {
 			return err
 		}
@@ -193,7 +212,7 @@ func (c *Client) Do(ctx context.Context, method, url string, body io.Reader, hea
 			retryAfter := c.parseRetryAfter(resp.Header)
 
 			// Record rate limit error and get recommended backoff
-			recommendedBackoff := c.rateLimiter.RecordRateLimitError(url, retryAfter)
+			recommendedBackoff := c.rateLimiter.RecordRateLimitError(urlStr, retryAfter)
 			if recommendedBackoff > retryAfter {
 				retryAfter = recommendedBackoff
 			}
@@ -224,21 +243,27 @@ func (c *Client) Do(ctx context.Context, method, url string, body io.Reader, hea
 		if lastResp != nil {
 			lastResp.Body.Close()
 		}
+		// Record failure to circuit breaker
+		c.circuitBreaker.RecordFailure(domain, err)
 		return nil, err
 	}
 
 	if lastResp == nil {
-		return nil, fmt.Errorf("no response received")
+		err := fmt.Errorf("no response received")
+		c.circuitBreaker.RecordFailure(domain, err)
+		return nil, err
 	}
 
 	defer lastResp.Body.Close()
 	respBody, err := io.ReadAll(lastResp.Body)
 	if err != nil {
+		c.circuitBreaker.RecordFailure(domain, err)
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
 
-	// Record successful request to help recover from backoff
-	c.rateLimiter.RecordSuccess(url)
+	// Record successful request to help recover from backoff and circuit breaker
+	c.rateLimiter.RecordSuccess(urlStr)
+	c.circuitBreaker.RecordSuccess(domain)
 
 	return &Response{
 		StatusCode: lastResp.StatusCode,
