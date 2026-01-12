@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"regexp"
-	"strings"
 	"time"
 	"ytsync/retry"
 )
@@ -24,16 +23,17 @@ const (
 type RSSLister struct {
 	client      *http.Client
 	RetryConfig *retry.Config
+	resolver    *ChannelResolver
 }
 
 // NewRSSLister creates a new RSS-based video lister.
 func NewRSSLister() *RSSLister {
 	cfg := retry.DefaultConfig()
+	client := &http.Client{Timeout: defaultTimeout}
 	return &RSSLister{
-		client: &http.Client{
-			Timeout: defaultTimeout,
-		},
+		client:      client,
 		RetryConfig: &cfg,
+		resolver:    &ChannelResolver{HTTPClient: client},
 	}
 }
 
@@ -43,9 +43,9 @@ func NewRSSListerWithClient(client *http.Client) *RSSLister {
 }
 
 // ListVideos fetches videos from the YouTube RSS feed.
-// The channelURL must contain a channel ID (UC...) - handles are not supported.
+// Supports channel IDs, channel URLs, and @handles (handles are resolved automatically).
 func (r *RSSLister) ListVideos(ctx context.Context, channelURL string, opts *ListOptions) ([]VideoInfo, error) {
-	channelID, err := extractChannelID(channelURL)
+	channelID, err := r.resolveChannelID(ctx, channelURL)
 	if err != nil {
 		return nil, &ListerError{Source: "rss", Channel: channelURL, Err: err}
 	}
@@ -141,7 +141,7 @@ type RSSIncrementalResult struct {
 //
 // Returns RSSIncrementalResult with gap detection and video list.
 func (r *RSSLister) ListVideosIncremental(ctx context.Context, channelURL string, lastSyncTime time.Time, opts *ListOptions) (*RSSIncrementalResult, error) {
-	channelID, err := extractChannelID(channelURL)
+	channelID, err := r.resolveChannelID(ctx, channelURL)
 	if err != nil {
 		return nil, &ListerError{Source: "rss", Channel: channelURL, Err: err}
 	}
@@ -363,26 +363,29 @@ func filterVideos(videos []VideoInfo, opts *ListOptions) []VideoInfo {
 // channelIDRegex matches YouTube channel IDs (UC followed by 22 base64 chars).
 var channelIDRegex = regexp.MustCompile(`UC[a-zA-Z0-9_-]{22}`)
 
-// extractChannelID extracts a channel ID from various URL formats.
+// resolveChannelID resolves a channel URL, handle, or ID to a channel ID.
+// Uses the ChannelResolver for handles (@username) and custom URLs.
+func (r *RSSLister) resolveChannelID(ctx context.Context, input string) (string, error) {
+	// Try direct extraction first (no HTTP needed)
+	if id := extractChannelIDDirect(input); id != "" {
+		return id, nil
+	}
+
+	// Need to resolve handle or custom URL
+	if r.resolver != nil {
+		return r.resolver.ResolveChannelID(ctx, input)
+	}
+
+	// Fallback: can't resolve without resolver
+	return "", fmt.Errorf("%w: cannot extract channel ID from %q (handles require resolution)", ErrInvalidURL, input)
+}
+
+// extractChannelID extracts a channel ID from various URL formats (no HTTP).
+// Deprecated: Use resolveChannelID instead which supports handles.
 func extractChannelID(input string) (string, error) {
-	// Direct channel ID
-	if channelIDRegex.MatchString(input) {
-		match := channelIDRegex.FindString(input)
-		return match, nil
+	if id := extractChannelIDDirect(input); id != "" {
+		return id, nil
 	}
-
-	// Check for channel URL patterns
-	if strings.Contains(input, "youtube.com/channel/") {
-		parts := strings.Split(input, "youtube.com/channel/")
-		if len(parts) > 1 {
-			id := strings.Split(parts[1], "/")[0]
-			id = strings.Split(id, "?")[0]
-			if channelIDRegex.MatchString(id) {
-				return id, nil
-			}
-		}
-	}
-
 	return "", fmt.Errorf("%w: cannot extract channel ID from %q (handles require resolution)", ErrInvalidURL, input)
 }
 

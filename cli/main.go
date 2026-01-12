@@ -215,8 +215,8 @@ func cmdTranscript(args []string) {
 	extractor.YtdlpPath = cfg.YtdlpPath
 	extractor.Timeout = cfg.YtdlpTimeout
 
-	// Extract transcript with longer timeout for slow downloads
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Extract transcript with configured timeout
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.YtdlpTimeout)
 	defer cancel()
 
 	fmt.Fprintf(os.Stderr, "Fetching transcript for %s...\n", videoID)
