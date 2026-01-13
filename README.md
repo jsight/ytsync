@@ -39,8 +39,10 @@ Build from source:
 ```bash
 git clone https://github.com/jsight/ytsync.git
 cd ytsync
-go build -o ytsync ./cmd/ytsync
+go build -o ytsync ./cli
 ```
+
+Or download pre-built binaries from the [releases page](https://github.com/jsight/ytsync/releases).
 
 ### Requirements
 
@@ -275,7 +277,7 @@ ytsync/                    - Public library package
 │   ├── transcript.go      - Transcript extraction + parsing
 │   └── metadata.go        - Video metadata fetching
 ├── storage/               - Persistent storage (public)
-└── cmd/ytsync/            - CLI application
+└── cli/                   - CLI application
     └── main.go            - CLI entry point with subcommands
 ```
 
