@@ -3,7 +3,6 @@ package http
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -15,11 +14,10 @@ import (
 
 // SessionManager manages HTTP sessions with persistent cookies.
 type SessionManager struct {
-	jar      http.CookieJar
-	client   *http.Client
+	jar        http.CookieJar
 	cookiePath string
-	mu       sync.RWMutex
-	config   SessionConfig
+	mu         sync.RWMutex
+	config     SessionConfig
 }
 
 // SessionConfig configures session behavior.
@@ -179,7 +177,7 @@ func (sm *SessionManager) SaveCookies() error {
 	}
 
 	// Write to file with restricted permissions
-	if err := ioutil.WriteFile(sm.cookiePath, data, 0600); err != nil {
+	if err := os.WriteFile(sm.cookiePath, data, 0600); err != nil {
 		return fmt.Errorf("write cookie file: %w", err)
 	}
 
@@ -201,7 +199,7 @@ func (sm *SessionManager) LoadCookies() error {
 	defer sm.mu.Unlock()
 
 	// Read file
-	data, err := ioutil.ReadFile(sm.cookiePath)
+	data, err := os.ReadFile(sm.cookiePath)
 	if err != nil {
 		return fmt.Errorf("read cookie file: %w", err)
 	}
@@ -330,7 +328,7 @@ func (fcs *FileCookieStore) Load() ([]*http.Cookie, error) {
 		return []*http.Cookie{}, nil
 	}
 
-	data, err := ioutil.ReadFile(fcs.path)
+	data, err := os.ReadFile(fcs.path)
 	if err != nil {
 		return nil, fmt.Errorf("read cookie file: %w", err)
 	}
@@ -358,7 +356,7 @@ func (fcs *FileCookieStore) Save(cookies []*http.Cookie) error {
 		return fmt.Errorf("create directory: %w", err)
 	}
 
-	if err := ioutil.WriteFile(fcs.path, data, 0600); err != nil {
+	if err := os.WriteFile(fcs.path, data, 0600); err != nil {
 		return fmt.Errorf("write cookie file: %w", err)
 	}
 

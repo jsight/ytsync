@@ -37,10 +37,7 @@ func TestLargeTranscriptPerformance(t *testing.T) {
 	}
 
 	// Test 2: VTT conversion should be fast
-	start = time.Now()
 	vttOutput, err := converter.ToFormat(FormatVTT)
-	duration = time.Since(start)
-
 	if err != nil {
 		t.Fatalf("VTT conversion failed: %v", err)
 	}
@@ -113,11 +110,15 @@ func TestFormatParsingPerformance(t *testing.T) {
 	jsonOutput, _ := converter.ToFormat(FormatJSON)
 
 	start = time.Now()
-	parsed, err = ParseFormat(jsonOutput, FormatJSON)
+	parsedJSON, err := ParseFormat(jsonOutput, FormatJSON)
 	duration = time.Since(start)
 
 	if err != nil {
 		t.Fatalf("JSON parsing failed: %v", err)
+	}
+
+	if len(parsedJSON) == 0 {
+		t.Error("Parsed JSON has no entries")
 	}
 
 	if duration > 50*time.Millisecond {
