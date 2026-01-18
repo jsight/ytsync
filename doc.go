@@ -7,6 +7,7 @@
 // ytsync provides high-level convenience functions for the most common operations:
 //
 //   - ListVideos: Fetch videos from a YouTube channel
+//   - DownloadVideo: Download a video or extract audio
 //   - ExtractTranscript: Get transcript for a video
 //   - FetchVideoMetadata: Retrieve comprehensive video metadata
 //
@@ -22,6 +23,27 @@
 //	for _, v := range videos {
 //		fmt.Println(v.Title)
 //	}
+//
+// Download a video:
+//
+//	result, err := ytsync.DownloadVideo(ctx, "dQw4w9WgXcQ")
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	fmt.Printf("Downloaded to: %s\n", result.VideoPath)
+//
+// Download audio only with options:
+//
+//	result, err := ytsync.DownloadVideoWithOptions(ctx, "dQw4w9WgXcQ", &ytsync.DownloadOptions{
+//		OutputDir:       "/tmp/downloads",
+//		AudioOnly:       true,
+//		AudioQuality:    192,
+//		IncludeMetadata: true,
+//	})
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	fmt.Printf("Audio: %s\nMetadata: %s\n", result.VideoPath, result.MetadataPath)
 //
 // Extract a transcript:
 //

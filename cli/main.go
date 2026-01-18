@@ -316,7 +316,8 @@ func cmdDownload(args []string) {
 	} else {
 		// Video download with best format
 		if *format == "best" {
-			ytdlpArgs = append(ytdlpArgs, "-f", "best[height<=1080]")
+			// Use a more robust format selection that falls back gracefully
+			ytdlpArgs = append(ytdlpArgs, "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best")
 		} else {
 			ytdlpArgs = append(ytdlpArgs, "-f", *format)
 		}

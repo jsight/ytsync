@@ -109,6 +109,46 @@ func ExampleFetchVideoMetadata() {
 	}
 }
 
+// ExampleDownloadVideo demonstrates how to download a YouTube video.
+func ExampleDownloadVideo() {
+	ctx := context.Background()
+
+	// Download a video with default settings (current directory, best quality up to 1080p)
+	result, err := DownloadVideo(ctx, "dQw4w9WgXcQ")
+	if err != nil {
+		log.Printf("Error downloading video: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Video downloaded to: %s\n", result.VideoPath)
+}
+
+// ExampleDownloadVideoWithOptions demonstrates configurable video downloading.
+func ExampleDownloadVideoWithOptions() {
+	ctx := context.Background()
+
+	// Download audio only with metadata
+	result, err := DownloadVideoWithOptions(ctx, "dQw4w9WgXcQ", &DownloadOptions{
+		OutputDir:       "/tmp/my-downloads",
+		AudioOnly:       true,
+		AudioQuality:    192,
+		IncludeMetadata: true,
+	})
+	if err != nil {
+		log.Printf("Error downloading: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Audio downloaded to: %s\n", result.VideoPath)
+	if result.Metadata != nil {
+		fmt.Printf("Title: %s\n", result.Metadata.Title)
+		fmt.Printf("Duration: %d seconds\n", result.Metadata.Duration)
+	}
+	if result.MetadataPath != "" {
+		fmt.Printf("Metadata saved to: %s\n", result.MetadataPath)
+	}
+}
+
 // TestErrorHandling demonstrates error handling patterns.
 func TestErrorHandling(t *testing.T) {
 	ctx := context.Background()

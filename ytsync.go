@@ -249,3 +249,82 @@ type SyncResult struct {
 	// GapDetected is true if RSS sync detected a gap in the feed.
 	GapDetected bool
 }
+
+// DownloadOptions configures video download behavior.
+type DownloadOptions struct {
+	// OutputDir is the directory to save the downloaded video.
+	// Defaults to current directory if empty.
+	OutputDir string
+	// Format specifies the video format: "best", "mp4", "webm", or a yt-dlp format string.
+	// Defaults to "best" which selects the best quality up to 1080p.
+	Format string
+	// AudioOnly extracts audio as MP3 instead of downloading video.
+	AudioOnly bool
+	// AudioQuality specifies the audio quality in kbps when AudioOnly is true.
+	// Defaults to 192 if not specified.
+	AudioQuality int
+	// IncludeMetadata saves video metadata to a JSON file alongside the video.
+	IncludeMetadata bool
+}
+
+// DownloadResult contains information about a completed download.
+type DownloadResult struct {
+	// VideoPath is the path to the downloaded video/audio file.
+	VideoPath string
+	// MetadataPath is the path to the metadata JSON file (if IncludeMetadata was true).
+	MetadataPath string
+	// Metadata contains the parsed video metadata (if IncludeMetadata was true).
+	Metadata *youtube.VideoMetadata
+}
+
+// DownloadVideo downloads a YouTube video using default configuration.
+// It uses yt-dlp to download the video in the best available quality up to 1080p.
+//
+// The videoID can be:
+// - A video ID: dQw4w9WgXcQ
+// - A full URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+//
+// The video will be saved to the current directory with the video's title as filename.
+func DownloadVideo(ctx context.Context, videoID string) (*DownloadResult, error) {
+	return DownloadVideoWithOptions(ctx, videoID, &DownloadOptions{})
+}
+
+// DownloadVideoWithOptions downloads a YouTube video with custom options.
+func DownloadVideoWithOptions(ctx context.Context, videoID string, opts *DownloadOptions) (*DownloadResult, error) {
+	if opts == nil {
+		opts = &DownloadOptions{}
+	}
+
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+
+	// Create downloader
+	downloader := youtube.NewDownloader()
+	downloader.YtdlpPath = cfg.YtdlpPath
+
+	// Convert public options to internal options
+	downloadOpts := &youtube.DownloadOptions{
+		OutputDir:       opts.OutputDir,
+		Format:          opts.Format,
+		AudioOnly:       opts.AudioOnly,
+		AudioQuality:    opts.AudioQuality,
+		IncludeMetadata: opts.IncludeMetadata,
+		YtdlpPath:       cfg.YtdlpPath,
+	}
+
+	// Download video
+	result, err := downloader.Download(ctx, videoID, downloadOpts)
+	if err != nil {
+		return nil, fmt.Errorf("download video: %w", err)
+	}
+
+	// Convert result to public type
+	return &DownloadResult{
+		VideoPath:    result.VideoPath,
+		MetadataPath: result.MetadataPath,
+		Metadata:     result.Metadata,
+	}, nil
+}

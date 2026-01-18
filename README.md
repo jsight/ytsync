@@ -32,6 +32,37 @@ videos, err := ytsync.ListVideos(ctx, "https://www.youtube.com/channel/UCxxxxx")
 
 See [doc.go](./doc.go) for comprehensive documentation and examples.
 
+#### Library Usage Examples
+
+```go
+import "github.com/jsight/ytsync"
+
+// List videos from a channel
+videos, err := ytsync.ListVideos(ctx, "https://www.youtube.com/channel/UCxxxxx")
+
+// Download a video
+result, err := ytsync.DownloadVideo(ctx, "dQw4w9WgXcQ")
+fmt.Printf("Downloaded to: %s\n", result.VideoPath)
+
+// Download audio only with metadata
+result, err := ytsync.DownloadVideoWithOptions(ctx, "dQw4w9WgXcQ", &ytsync.DownloadOptions{
+    OutputDir:       "/tmp/downloads",
+    AudioOnly:       true,
+    AudioQuality:    192,
+    IncludeMetadata: true,
+})
+
+// Extract transcript
+transcript, err := ytsync.ExtractTranscript(ctx, "dQw4w9WgXcQ")
+for _, entry := range transcript.Entries {
+    fmt.Printf("[%.2fs] %s\n", entry.Start, entry.Text)
+}
+
+// Fetch video metadata
+metadata, err := ytsync.FetchVideoMetadata(ctx, "dQw4w9WgXcQ")
+fmt.Printf("Title: %s, Duration: %ds\n", metadata.Title, metadata.Duration)
+```
+
 ### CLI Tool
 
 Build from source:

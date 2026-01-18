@@ -5,6 +5,20 @@ All notable changes to ytsync will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-01-18
+
+### Added
+- **Public Download API** - New `DownloadVideo()` and `DownloadVideoWithOptions()` functions (Closes #2)
+  - Download videos programmatically from Go code
+  - Support for audio-only extraction (MP3) with configurable quality
+  - Optional metadata JSON file alongside downloaded media
+  - Custom output directory and format selection
+  - Context support for cancellation and timeouts
+
+### Changed
+- Improved video format selection to use fallback chain for better compatibility
+  - Default format now: `bestvideo[height<=1080]+bestaudio/best[height<=1080]/best`
+
 ## [1.0.1] - 2026-01-13
 
 ### Fixed
@@ -130,5 +144,6 @@ ytsync download --audio-only dQw4w9WgXcQ
 - Private/unlisted videos are not accessible
 - RSS feeds limited to 15 most recent videos
 
+[1.1.0]: https://github.com/jsight/ytsync/releases/tag/v1.1.0
 [1.0.1]: https://github.com/jsight/ytsync/releases/tag/v1.0.1
 [1.0.0]: https://github.com/jsight/ytsync/releases/tag/v1.0.0
