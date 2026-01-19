@@ -123,6 +123,55 @@ func TestParseYtdlpDate(t *testing.T) {
 			entry: ytdlpEntry{},
 			want:  time.Time{},
 		},
+		{
+			name: "upload_date old video (1980s)",
+			entry: ytdlpEntry{
+				UploadDate: "19851025",
+			},
+			want: time.Date(1985, 10, 25, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "upload_date very old video (2005)",
+			entry: ytdlpEntry{
+				UploadDate: "20051020",
+			},
+			want: time.Date(2005, 10, 20, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "release_date as fallback",
+			entry: ytdlpEntry{
+				ReleaseDate: "20230520",
+			},
+			want: time.Date(2023, 5, 20, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "published_date as fallback",
+			entry: ytdlpEntry{
+				PublishedDate: "20220815",
+			},
+			want: time.Date(2022, 8, 15, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "invalid upload_date string",
+			entry: ytdlpEntry{
+				UploadDate: "invalid",
+			},
+			want: time.Time{},
+		},
+		{
+			name: "release_timestamp fallback",
+			entry: ytdlpEntry{
+				ReleaseTimestamp: 1672531200, // 2023-01-01 00:00:00 UTC
+			},
+			want: time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "created_at fallback",
+			entry: ytdlpEntry{
+				CreatedAt: 1640995200, // 2022-01-01 00:00:00 UTC
+			},
+			want: time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC),
+		},
 	}
 
 	for _, tt := range tests {

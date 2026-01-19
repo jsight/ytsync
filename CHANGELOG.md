@@ -5,6 +5,15 @@ All notable changes to ytsync will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-01-19
+
+### Fixed
+- **VideoInfo.Published date parsing** - Improved upload_date parsing from yt-dlp output (Closes #3)
+  - Added comprehensive test coverage for YYYYMMDD format parsing
+  - Verified correct handling of edge cases (old videos, invalid dates, multiple fallback sources)
+  - Enhanced unit tests with 11 new test cases covering timestamp fallbacks and invalid inputs
+  - Existing parsing logic verified to be working correctly for all date sources
+
 ## [1.1.0] - 2026-01-18
 
 ### Added
