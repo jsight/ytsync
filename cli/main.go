@@ -30,6 +30,8 @@ func main() {
 		cmdTranscript(args)
 	case "download":
 		cmdDownload(args)
+	case "metadata":
+		cmdMetadata(args)
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -45,6 +47,7 @@ Usage:
   ytsync list [flags] <youtube-url>     List videos from a channel
   ytsync transcript [flags] <video-id>  Extract transcript from a video
   ytsync download [flags] <video-id>    Download a video
+  ytsync metadata [flags] <video-id>    Fetch video metadata
   ytsync help                           Show this help message
 
 Examples:
@@ -55,6 +58,8 @@ Examples:
   ytsync download dQw4w9WgXcQ                                 # Download video
   ytsync download dQw4w9WgXcQ --audio-only                    # Audio only
   ytsync download dQw4w9WgXcQ --dir ~/Downloads               # Specify directory
+  ytsync metadata dQw4w9WgXcQ                                # Get metadata
+  ytsync metadata --format json dQw4w9WgXcQ                  # Get metadata as JSON
 
 For help on specific command: ytsync <command> -h
 `)
@@ -348,6 +353,101 @@ func cmdDownload(args []string) {
 	}
 
 	fmt.Fprintf(os.Stderr, "Download complete!\n")
+}
+
+func cmdMetadata(args []string) {
+	fs := flag.NewFlagSet("metadata", flag.ExitOnError)
+	format := fs.String("format", "table", "Output format: table, json")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: ytsync metadata [flags] <video-id>\n\nFlags:\n")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	argv := fs.Args()
+	if len(argv) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: missing video-id\n")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	videoID := argv[0]
+
+	// Load config
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Fetch metadata with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	fmt.Fprintf(os.Stderr, "Fetching metadata for %s...\n", videoID)
+	metadata, err := youtube.FetchMetadata(ctx, videoID, cfg.YtdlpPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching metadata: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Display result based on format
+	switch *format {
+	case "json":
+		data, err := json.MarshalIndent(metadata, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting JSON: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(data))
+	case "table":
+		fallthrough
+	default:
+		// Table format
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "FIELD\tVALUE")
+		fmt.Fprintln(w, "-----\t-----")
+		fmt.Fprintf(w, "ID\t%s\n", metadata.ID)
+		fmt.Fprintf(w, "Title\t%s\n", metadata.Title)
+		fmt.Fprintf(w, "Uploader\t%s\n", metadata.Uploader)
+		fmt.Fprintf(w, "Uploader ID\t%s\n", metadata.UploaderID)
+		fmt.Fprintf(w, "Upload Date\t%s\n", metadata.UploadDate)
+
+		if metadata.Duration > 0 {
+			duration := fmt.Sprintf("%d:%02d", int(metadata.Duration)/60, int(metadata.Duration)%60)
+			fmt.Fprintf(w, "Duration\t%s\n", duration)
+		}
+
+		if metadata.ViewCount > 0 {
+			fmt.Fprintf(w, "View Count\t%d\n", metadata.ViewCount)
+		}
+
+		if metadata.UploaderURL != "" {
+			fmt.Fprintf(w, "Channel URL\t%s\n", metadata.UploaderURL)
+		}
+
+		if metadata.ThumbnailURL != "" {
+			fmt.Fprintf(w, "Thumbnail\t%s\n", metadata.ThumbnailURL)
+		}
+
+		if len(metadata.Categories) > 0 {
+			fmt.Fprintf(w, "Categories\t%s\n", strings.Join(metadata.Categories, ", "))
+		}
+
+		if len(metadata.Tags) > 0 {
+			fmt.Fprintf(w, "Tags\t%s\n", strings.Join(metadata.Tags, ", "))
+		}
+
+		fmt.Fprintf(w, "Live Content\t%t\n", metadata.IsLiveContent)
+		fmt.Fprintf(w, "Fetched At\t%s\n", metadata.FetchedAt.Format(time.RFC3339))
+
+		w.Flush()
+
+		// Show description separately if it exists
+		if metadata.Description != "" {
+			fmt.Printf("\nDESCRIPTION:\n%s\n", metadata.Description)
+		}
+	}
 }
 
 // saveMetadata saves video metadata to a JSON file.
