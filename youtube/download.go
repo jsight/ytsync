@@ -26,6 +26,10 @@ type DownloadOptions struct {
 	AudioQuality int
 	// IncludeMetadata saves video metadata to a JSON file alongside the video.
 	IncludeMetadata bool
+	// Filename specifies a custom output filename (without extension).
+	// If empty, defaults to the sanitized video title.
+	// When provided, this takes precedence over title-based naming.
+	Filename string
 	// YtdlpPath is the path to the yt-dlp executable.
 	// If empty, uses "yt-dlp" from PATH.
 	YtdlpPath string
@@ -101,7 +105,14 @@ func (d *Downloader) Download(ctx context.Context, videoID string, opts *Downloa
 
 	// Build yt-dlp arguments
 	// Use a template that outputs the final filename
-	outputTemplate := filepath.Join(outputDir, "%(title)s.%(ext)s")
+	// If custom Filename is provided, use it; otherwise use video title
+	var outputTemplate string
+	if opts.Filename != "" {
+		// Sanitize the custom filename to remove invalid characters
+		outputTemplate = filepath.Join(outputDir, sanitizeFilename(opts.Filename)+".%(ext)s")
+	} else {
+		outputTemplate = filepath.Join(outputDir, "%(title)s.%(ext)s")
+	}
 	ytdlpArgs := []string{
 		"-o", outputTemplate,
 		"--no-warnings",

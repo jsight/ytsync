@@ -265,6 +265,11 @@ type DownloadOptions struct {
 	AudioQuality int
 	// IncludeMetadata saves video metadata to a JSON file alongside the video.
 	IncludeMetadata bool
+	// Filename specifies a custom output filename (without extension).
+	// If empty, defaults to the sanitized video title.
+	// When provided, this takes precedence over title-based naming.
+	// Useful for ensuring unique filenames based on video IDs (e.g., "dQw4w9WgXcQ").
+	Filename string
 }
 
 // DownloadResult contains information about a completed download.
@@ -312,6 +317,7 @@ func DownloadVideoWithOptions(ctx context.Context, videoID string, opts *Downloa
 		AudioOnly:       opts.AudioOnly,
 		AudioQuality:    opts.AudioQuality,
 		IncludeMetadata: opts.IncludeMetadata,
+		Filename:        opts.Filename,
 		YtdlpPath:       cfg.YtdlpPath,
 	}
 

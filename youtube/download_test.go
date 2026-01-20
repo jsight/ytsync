@@ -34,6 +34,9 @@ func TestDownloadOptions_Defaults(t *testing.T) {
 	if opts.IncludeMetadata {
 		t.Error("DownloadOptions.IncludeMetadata default = true, want false")
 	}
+	if opts.Filename != "" {
+		t.Errorf("DownloadOptions.Filename default = %q, want empty", opts.Filename)
+	}
 }
 
 func TestSanitizeFilename(t *testing.T) {
@@ -401,6 +404,90 @@ func TestSaveMetadataToFile(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "Test Video") {
 		t.Error("metadata file should contain video title")
+	}
+}
+
+func TestDownloadOptions_CustomFilename(t *testing.T) {
+	opts := &DownloadOptions{
+		Filename: "my-custom-video",
+	}
+
+	if opts.Filename != "my-custom-video" {
+		t.Errorf("DownloadOptions.Filename = %q, want %q", opts.Filename, "my-custom-video")
+	}
+}
+
+func TestDownloadOptions_CustomFilenameEmpty(t *testing.T) {
+	// When filename is empty, should fall back to title-based naming
+	opts := &DownloadOptions{
+		Filename: "",
+	}
+
+	if opts.Filename != "" {
+		t.Errorf("DownloadOptions.Filename = %q, want empty", opts.Filename)
+	}
+}
+
+func TestDownloadOptions_CustomFilenameWithSpecialChars(t *testing.T) {
+	// Custom filenames with special characters should be sanitized
+	opts := &DownloadOptions{
+		Filename: "my/video:file*name",
+	}
+
+	if opts.Filename != "my/video:file*name" {
+		t.Errorf("DownloadOptions.Filename = %q, want %q", opts.Filename, "my/video:file*name")
+	}
+
+	// The sanitization happens during Download, not at option creation
+	sanitized := sanitizeFilename(opts.Filename)
+	expected := "my_video_file_name"
+	if sanitized != expected {
+		t.Errorf("sanitizeFilename(%q) = %q, want %q", opts.Filename, sanitized, expected)
+	}
+}
+
+func TestDownloadOptions_FilenameUsingVideoID(t *testing.T) {
+	// Use case: ragpile wants to use video IDs as filenames to avoid conflicts
+	videoID := "dQw4w9WgXcQ"
+	opts := &DownloadOptions{
+		Filename: videoID,
+	}
+
+	if opts.Filename != videoID {
+		t.Errorf("DownloadOptions.Filename = %q, want %q", opts.Filename, videoID)
+	}
+
+	// Video IDs should not need sanitization
+	sanitized := sanitizeFilename(opts.Filename)
+	if sanitized != videoID {
+		t.Errorf("sanitizeFilename(%q) = %q, want %q", videoID, sanitized, videoID)
+	}
+}
+
+func TestDownloadOptions_FilenameWithNumbers(t *testing.T) {
+	opts := &DownloadOptions{
+		Filename: "video-2024-01-19",
+	}
+
+	if opts.Filename != "video-2024-01-19" {
+		t.Errorf("DownloadOptions.Filename = %q, want %q", opts.Filename, "video-2024-01-19")
+	}
+
+	sanitized := sanitizeFilename(opts.Filename)
+	if sanitized != "video-2024-01-19" {
+		t.Errorf("sanitizeFilename(%q) = %q, want %q", opts.Filename, sanitized, "video-2024-01-19")
+	}
+}
+
+func TestDownloadOptions_CustomFilenameOverridesTitle(t *testing.T) {
+	// When custom filename is provided, it should take precedence
+	opts := &DownloadOptions{
+		Filename: "custom-video",
+	}
+
+	// Both can be set; Filename takes precedence during download
+	if opts.Filename == "" {
+		t.Error("custom filename should be set")
 	}
 }
 

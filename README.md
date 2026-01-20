@@ -52,6 +52,12 @@ result, err := ytsync.DownloadVideoWithOptions(ctx, "dQw4w9WgXcQ", &ytsync.Downl
     IncludeMetadata: true,
 })
 
+// Download with custom filename (useful for unique naming, e.g., by video ID)
+result, err := ytsync.DownloadVideoWithOptions(ctx, "dQw4w9WgXcQ", &ytsync.DownloadOptions{
+    OutputDir: "/tmp/downloads",
+    Filename:  "dQw4w9WgXcQ", // Use video ID as filename to avoid conflicts
+})
+
 // Extract transcript
 transcript, err := ytsync.ExtractTranscript(ctx, "dQw4w9WgXcQ")
 for _, entry := range transcript.Entries {
