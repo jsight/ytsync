@@ -14,6 +14,18 @@ import (
 	"ytsync/youtube"
 )
 
+// stringSliceFlag is a custom flag type for repeated string flags.
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *stringSliceFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -32,6 +44,8 @@ func main() {
 		cmdDownload(args)
 	case "metadata":
 		cmdMetadata(args)
+	case "formats":
+		cmdFormats(args)
 	case "help", "-h", "--help":
 		printUsage()
 	default:
@@ -48,6 +62,7 @@ Usage:
   ytsync transcript [flags] <video-id>  Extract transcript from a video
   ytsync download [flags] <video-id>    Download a video
   ytsync metadata [flags] <video-id>    Fetch video metadata
+  ytsync formats <video-id>             List available video formats
   ytsync help                           Show this help message
 
 Examples:
@@ -60,6 +75,7 @@ Examples:
   ytsync download dQw4w9WgXcQ --dir ~/Downloads               # Specify directory
   ytsync metadata dQw4w9WgXcQ                                # Get metadata
   ytsync metadata --format json dQw4w9WgXcQ                  # Get metadata as JSON
+  ytsync formats dQw4w9WgXcQ                                 # List available formats
 
 For help on specific command: ytsync <command> -h
 `)
@@ -270,6 +286,29 @@ func cmdDownload(args []string) {
 	outputDir := fs.String("dir", ".", "Directory to save video")
 	format := fs.String("format", "best", "Video format: best, mp4, webm, or audio quality")
 	noMetadata := fs.Bool("no-metadata", false, "Skip downloading metadata JSON")
+	embedMetadata := fs.Bool("embed-metadata", false, "Embed metadata into video file")
+	writeThumbnail := fs.Bool("write-thumbnail", false, "Write thumbnail image to file")
+	remuxVideo := fs.String("remux-video", "", "Remux video to container format (e.g., 'mp4', 'mkv')")
+	sponsorBlockRemove := fs.String("sponsorblock-remove", "", "Remove SponsorBlock segments (e.g., 'sponsor,intro')")
+	noOverwrites := fs.Bool("no-overwrites", false, "Do not overwrite existing files")
+	restrictFilenames := fs.Bool("restrict-filenames", false, "Restrict filenames to ASCII characters")
+	downloadArchive := fs.String("download-archive", "", "File to record downloaded video IDs")
+	cookiesFile := fs.String("cookies", "", "Path to Netscape-format cookies file")
+	cookiesFromBrowser := fs.String("cookies-from-browser", "", "Extract cookies from browser (e.g., 'chrome', 'firefox')")
+
+	// Network options
+	proxy := fs.String("proxy", "", "Proxy URL (e.g., 'socks5://127.0.0.1:1080')")
+	rateLimit := fs.String("limit-rate", "", "Limit download rate (e.g., '50K', '4.2M')")
+
+	// Filtering options
+	var matchFilters stringSliceFlag
+	fs.Var(&matchFilters, "match-filter", "Generic video filter (can be specified multiple times)")
+	dateAfter := fs.String("date-after", "", "Download videos uploaded after this date (YYYYMMDD or relative)")
+
+	// Subtitle options
+	writeSubtitles := fs.Bool("write-subs", false, "Download subtitles")
+	subLangs := fs.String("sub-langs", "", "Subtitle languages to download (comma-separated, e.g., 'en,es')")
+
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: ytsync download [flags] <video-id>\n\nFlags:\n")
 		fs.PrintDefaults()
@@ -326,6 +365,65 @@ func cmdDownload(args []string) {
 		} else {
 			ytdlpArgs = append(ytdlpArgs, "-f", *format)
 		}
+	}
+
+	// Download behavior options
+	if *noOverwrites {
+		ytdlpArgs = append(ytdlpArgs, "--no-overwrites")
+	}
+	if *restrictFilenames {
+		ytdlpArgs = append(ytdlpArgs, "--restrict-filenames")
+	}
+	if *downloadArchive != "" {
+		ytdlpArgs = append(ytdlpArgs, "--download-archive", *downloadArchive)
+	}
+
+	// Authentication and cookie options
+	if *cookiesFile != "" {
+		ytdlpArgs = append(ytdlpArgs, "--cookies", *cookiesFile)
+	}
+	if *cookiesFromBrowser != "" {
+		ytdlpArgs = append(ytdlpArgs, "--cookies-from-browser", *cookiesFromBrowser)
+	}
+
+	// Metadata and thumbnail options
+	if *embedMetadata {
+		ytdlpArgs = append(ytdlpArgs, "--embed-metadata")
+	}
+	if *writeThumbnail {
+		ytdlpArgs = append(ytdlpArgs, "--write-thumbnail")
+	}
+
+	// Post-processing options
+	if *remuxVideo != "" {
+		ytdlpArgs = append(ytdlpArgs, "--remux-video", *remuxVideo)
+	}
+	if *sponsorBlockRemove != "" {
+		ytdlpArgs = append(ytdlpArgs, "--sponsorblock-remove", *sponsorBlockRemove)
+	}
+
+	// Subtitle options
+	if *writeSubtitles {
+		ytdlpArgs = append(ytdlpArgs, "--write-subs")
+	}
+	if *subLangs != "" {
+		ytdlpArgs = append(ytdlpArgs, "--sub-langs", *subLangs)
+	}
+
+	// Network options
+	if *proxy != "" {
+		ytdlpArgs = append(ytdlpArgs, "--proxy", *proxy)
+	}
+	if *rateLimit != "" {
+		ytdlpArgs = append(ytdlpArgs, "--limit-rate", *rateLimit)
+	}
+
+	// Filtering options
+	for _, filter := range matchFilters {
+		ytdlpArgs = append(ytdlpArgs, "--match-filters", filter)
+	}
+	if *dateAfter != "" {
+		ytdlpArgs = append(ytdlpArgs, "--dateafter", *dateAfter)
 	}
 
 	ytdlpArgs = append(ytdlpArgs, videoID)
@@ -491,4 +589,97 @@ func formatTimestamp(seconds float64) string {
 		return fmt.Sprintf("%d:%02d:%02d", hours, minutes, secs)
 	}
 	return fmt.Sprintf("%d:%02d", minutes, secs)
+}
+
+func cmdFormats(args []string) {
+	fs := flag.NewFlagSet("formats", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: ytsync formats <video-id>\n\nLists all available video formats for a video.\n")
+	}
+	fs.Parse(args)
+
+	argv := fs.Args()
+	if len(argv) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: missing video-id\n")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	videoID := argv[0]
+
+	// Load config
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Fetch formats with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	fmt.Fprintf(os.Stderr, "Fetching formats for %s...\n", videoID)
+	formats, err := youtube.ListFormats(ctx, videoID, cfg.YtdlpPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching formats: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(formats) == 0 {
+		fmt.Println("No formats found.")
+		return
+	}
+
+	// Display formats in a table
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "FORMAT ID\tEXT\tRESOLUTION\tFPS\tVIDEO CODEC\tAUDIO CODEC\tSIZE (MB)\tNOTE")
+
+	for _, format := range formats {
+		resolution := format.Resolution
+		if resolution == "" {
+			resolution = "N/A"
+		}
+
+		fps := ""
+		if format.FPS > 0 {
+			fps = fmt.Sprintf("%.0f", format.FPS)
+		} else {
+			fps = "N/A"
+		}
+
+		vcodec := format.VideoCodec
+		if vcodec == "" || vcodec == "none" {
+			vcodec = "N/A"
+		}
+
+		acodec := format.AudioCodec
+		if acodec == "" || acodec == "none" {
+			acodec = "N/A"
+		}
+
+		sizeStr := "N/A"
+		if format.Filesize > 0 {
+			sizeMB := float64(format.Filesize) / (1024 * 1024)
+			sizeStr = fmt.Sprintf("%.1f", sizeMB)
+		}
+
+		note := format.Note
+		if note == "" {
+			note = "-"
+		}
+
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			format.FormatID,
+			format.Extension,
+			resolution,
+			fps,
+			truncate(vcodec, 20),
+			truncate(acodec, 20),
+			sizeStr,
+			note,
+		)
+	}
+	w.Flush()
+
+	fmt.Fprintf(os.Stderr, "\nTotal: %d formats\n", len(formats))
 }

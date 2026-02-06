@@ -9,6 +9,16 @@ import (
 	"time"
 )
 
+// MetadataOptions configures how metadata is fetched.
+type MetadataOptions struct {
+	// YtdlpPath is the path to the yt-dlp executable.
+	YtdlpPath string
+	// CookiesFile is the path to a Netscape-format cookies file.
+	CookiesFile string
+	// CookiesFromBrowser extracts cookies from a browser (e.g., 'chrome', 'firefox').
+	CookiesFromBrowser string
+}
+
 // VideoMetadata contains essential metadata about a YouTube video.
 // This is typically fetched using yt-dlp and contains comprehensive information
 // about a video that may not be available from RSS feeds or other sources.
@@ -47,8 +57,38 @@ type VideoMetadata struct {
 // It executes yt-dlp with JSON output and parses the result into a VideoMetadata struct.
 // The provided context is used to enforce timeouts and handle cancellation.
 func FetchMetadata(ctx context.Context, videoID string, ytdlpPath string) (*VideoMetadata, error) {
+	opts := &MetadataOptions{
+		YtdlpPath: ytdlpPath,
+	}
+	return FetchMetadataWithOptions(ctx, videoID, opts)
+}
+
+// FetchMetadataWithOptions retrieves metadata with additional options like cookies.
+func FetchMetadataWithOptions(ctx context.Context, videoID string, opts *MetadataOptions) (*VideoMetadata, error) {
+	if opts == nil {
+		opts = &MetadataOptions{}
+	}
+
+	ytdlpPath := opts.YtdlpPath
+	if ytdlpPath == "" {
+		ytdlpPath = "yt-dlp"
+	}
+
+	// Build args
+	args := []string{"-J", "--no-warnings"}
+
+	// Add cookie options
+	if opts.CookiesFile != "" {
+		args = append(args, "--cookies", opts.CookiesFile)
+	}
+	if opts.CookiesFromBrowser != "" {
+		args = append(args, "--cookies-from-browser", opts.CookiesFromBrowser)
+	}
+
+	args = append(args, videoID)
+
 	// Run yt-dlp to get JSON metadata
-	cmd := exec.CommandContext(ctx, ytdlpPath, "-J", "--no-warnings", videoID)
+	cmd := exec.CommandContext(ctx, ytdlpPath, args...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
