@@ -45,6 +45,33 @@
 //	}
 //	fmt.Printf("Audio: %s\nMetadata: %s\n", result.VideoPath, result.MetadataPath)
 //
+// List available formats before downloading:
+//
+//	formats, err := ytsync.ListFormats(ctx, "dQw4w9WgXcQ")
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	for _, f := range formats {
+//		fmt.Printf("Format %s: %s %s (%d)\n", f.FormatID, f.Resolution, f.Extension, f.Filesize)
+//	}
+//
+// Download with cookies for age-restricted content:
+//
+//	result, err := ytsync.DownloadVideoWithOptions(ctx, "dQw4w9WgXcQ", &ytsync.DownloadOptions{
+//		OutputDir:          "/tmp/downloads",
+//		CookiesFromBrowser: "chrome",
+//		EmbedMetadata:      true,
+//	})
+//
+// Download with subtitle embedding:
+//
+//	result, err := ytsync.DownloadVideoWithOptions(ctx, "dQw4w9WgXcQ", &ytsync.DownloadOptions{
+//		OutputDir:          "/tmp/downloads",
+//		WriteSubtitles:     true,
+//		SubtitleLanguages:  "en,es,fr",
+//		EmbedSubtitles:     true,
+//	})
+//
 // Extract a transcript:
 //
 //	transcript, err := ytsync.ExtractTranscript(ctx, "dQw4w9WgXcQ")

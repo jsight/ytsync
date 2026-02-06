@@ -5,6 +5,90 @@ All notable changes to ytsync will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-06
+
+### Added
+- **Cookie and authentication support** - New authentication options for accessing restricted content
+  - `CookiesFile` - Load cookies from a Netscape format file
+  - `CookiesFromBrowser` - Extract cookies directly from browser profiles (Chrome, Firefox, Safari, Edge)
+  - `Username`/`Password` - Basic authentication credentials
+  - `Netrc` - Use .netrc file for authentication
+  - `VideoPassword` - Password-protected video access
+- **Network configuration options** - Fine-grained control over network behavior
+  - `Proxy` - HTTP/HTTPS/SOCKS proxy support
+  - `RateLimit` - Bandwidth limiting (e.g., "50K", "4.2M")
+  - `SourceAddress` - Bind to specific local IP address
+  - `ForceIPv4` - Force IPv4 connections
+  - `SocketTimeout` - Custom socket timeout duration
+  - `ConcurrentFragments` - Parallel fragment downloads
+  - `Impersonate` - Browser impersonation for anti-bot measures
+- **Format discovery API** - Programmatic access to available video formats
+  - `ListFormats()` - Query all available video/audio formats for a video
+  - `FormatInfo` struct with resolution, codec, filesize, and quality information
+  - CLI `formats` subcommand for listing formats interactively
+- **Subtitle download and embedding** - Comprehensive subtitle support
+  - `ListSubtitles()` - Discover available subtitle languages
+  - `WriteSubtitles` - Download manual subtitles
+  - `WriteAutoSubtitles` - Download auto-generated subtitles
+  - `SubtitleLanguages` - Language preference list
+  - `SubtitleFormat` - Output format selection (SRT, VTT, etc.)
+  - `ConvertSubtitles` - Convert subtitles to target format
+  - `EmbedSubtitles` - Embed subtitles into video file
+- **Download behavior controls** - Advanced download management
+  - `Retries` - Number of retry attempts
+  - `FragmentRetries` - Retries for fragmented downloads
+  - `NoOverwrites` - Skip existing files
+  - `Continue` - Resume partial downloads
+  - `RestrictFilenames` - ASCII-only filenames
+  - `DownloadArchive` - Track downloaded videos to skip duplicates
+  - `BreakOnExisting` - Stop playlist download on first existing file
+  - `MaxDownloads` - Limit number of downloads from playlist
+  - `ExtraArgs` - Pass arbitrary yt-dlp arguments
+- **Metadata embedding options** - Enhanced metadata handling
+  - `WriteThumbnail` - Download video thumbnail
+  - `EmbedMetadata` - Embed metadata into video file
+  - `EmbedThumbnail` - Embed thumbnail into video file
+  - `EmbedChapters` - Embed chapter markers
+  - `WriteInfoJSON` - Write metadata JSON file
+  - `ConvertThumbnails` - Convert thumbnails to target format
+- **Post-processing options** - Video manipulation after download
+  - `RemuxVideo` - Remux video to different container (e.g., MKV to MP4)
+  - `RecodeVideo` - Re-encode video to different format
+  - `SponsorBlockMark` - Mark SponsorBlock segments in video
+  - `SponsorBlockRemove` - Remove SponsorBlock segments from video
+  - `FFmpegLocation` - Custom FFmpeg binary path
+  - `DownloadSections` - Download specific time ranges
+- **Content filtering options** - Advanced video selection
+  - `MatchFilters` - Filter videos by metadata (e.g., "duration > 60")
+  - `DateAfter` - Download videos uploaded after date
+  - `DateBefore` - Download videos uploaded before date
+  - `AgeLimit` - Skip videos with age restrictions
+  - `XForwardedFor` - Bypass geo-restrictions with custom IP
+  - `PlaylistItems` - Download specific playlist items (e.g., "1-5,10,15-20")
+- **Format selection options** - Control format selection behavior
+  - `FormatSort` - Custom format sorting criteria
+  - `MergeOutputFormat` - Container format for merged video+audio
+- **Enhanced CLI download command** - New flags for common operations
+  - `--cookies` - Load cookies from file
+  - `--cookies-from-browser` - Extract cookies from browser
+  - `--embed-metadata` - Embed metadata into downloaded file
+  - `--write-thumbnail` - Download and save thumbnail
+  - `--no-overwrites` - Skip existing files
+  - `--restrict-filenames` - Use ASCII-only filenames
+  - `--download-archive` - Track downloaded videos in archive file
+  - `--write-subs` - Download subtitles
+  - `--sub-langs` - Subtitle language preferences
+  - `--remux-video` - Remux to different container
+  - `--sponsorblock-remove` - Remove SponsorBlock segments
+  - `--proxy` - Use HTTP/HTTPS/SOCKS proxy
+  - `--limit-rate` - Limit download bandwidth
+  - `--match-filter` - Filter by metadata criteria
+  - `--date-after` - Only download videos after date
+- **Cookie-aware metadata and transcript APIs** - Authentication support for metadata extraction
+  - `MetadataOptions` struct for passing authentication options
+  - `FetchMetadataWithOptions()` - Fetch metadata with cookie/auth support for age-restricted content
+  - Cookie propagation to `metadata.go` and `transcript.go` yt-dlp calls
+
 ## [1.2.0] - 2026-01-19
 
 ### Added
@@ -163,6 +247,9 @@ ytsync download --audio-only dQw4w9WgXcQ
 - Private/unlisted videos are not accessible
 - RSS feeds limited to 15 most recent videos
 
+[1.3.0]: https://github.com/jsight/ytsync/releases/tag/v1.3.0
+[1.2.0]: https://github.com/jsight/ytsync/releases/tag/v1.2.0
+[1.1.1]: https://github.com/jsight/ytsync/releases/tag/v1.1.1
 [1.1.0]: https://github.com/jsight/ytsync/releases/tag/v1.1.0
 [1.0.1]: https://github.com/jsight/ytsync/releases/tag/v1.0.1
 [1.0.0]: https://github.com/jsight/ytsync/releases/tag/v1.0.0

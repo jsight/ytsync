@@ -7,7 +7,13 @@ ytsync is a Go library and command-line tool for interacting with YouTube. It pr
 - **Go Library** with clean API for embedding in applications
 - **Video listing** from YouTube channels (yt-dlp or RSS feeds)
 - **Video downloading** with metadata JSON (video + subtitle tracks)
+- **Format discovery** for querying available video/audio formats and resolutions
+- **Subtitle downloads** with language preferences, auto-generated captions, and embedding
 - **Transcript extraction** with timestamps from any video
+- **Authentication & cookie support** for age-restricted and members-only content
+- **Network controls** including proxy support, rate limiting, and IPv4/IPv6 configuration
+- **Post-processing** with FFmpeg (remux, recode, thumbnail conversion)
+- **SponsorBlock integration** for marking or removing sponsored segments
 - **Live streams support** alongside regular videos
 - **Robust retry logic** with exponential backoff + jitter
 - **Configuration management** via config file or environment variables
@@ -57,6 +63,27 @@ result, err := ytsync.DownloadVideoWithOptions(ctx, "dQw4w9WgXcQ", &ytsync.Downl
     OutputDir: "/tmp/downloads",
     Filename:  "dQw4w9WgXcQ", // Use video ID as filename to avoid conflicts
 })
+
+// Download with cookies for age-restricted content
+result, err := ytsync.DownloadVideoWithOptions(ctx, "dQw4w9WgXcQ", &ytsync.DownloadOptions{
+    OutputDir:          "/tmp/downloads",
+    CookiesFromBrowser: "chrome", // Extract cookies from Chrome browser
+})
+
+// Download with subtitle embedding
+result, err := ytsync.DownloadVideoWithOptions(ctx, "dQw4w9WgXcQ", &ytsync.DownloadOptions{
+    OutputDir:         "/tmp/downloads",
+    WriteSubtitles:    true,
+    SubtitleLanguages: "en,es",
+    EmbedSubtitles:    true,
+    EmbedMetadata:     true,
+})
+
+// List available formats for a video
+formats, err := ytsync.ListFormats(ctx, "dQw4w9WgXcQ")
+for _, f := range formats {
+    fmt.Printf("%s: %s (%s) - %s\n", f.FormatID, f.Resolution, f.Extension, f.Note)
+}
 
 // Extract transcript
 transcript, err := ytsync.ExtractTranscript(ctx, "dQw4w9WgXcQ")
@@ -156,6 +183,18 @@ Shows transcript with format: `[HH:MM:SS +duration] text`
 ./ytsync transcript dQw4w9WgXcQ --no-auto
 ```
 
+### formats
+List available video formats.
+
+```bash
+ytsync formats [flags] <video-id>
+```
+
+**Examples:**
+```bash
+./ytsync formats dQw4w9WgXcQ
+```
+
 ### download
 Download video with metadata JSON.
 
@@ -164,10 +203,46 @@ ytsync download [flags] <video-id>
 ```
 
 **Flags:**
+
+*Basic Options:*
 - `-audio-only`: Extract audio as MP3
 - `-dir PATH`: Output directory (default: `.`)
 - `-format FORMAT`: Video format (default: `best[height<=1080]`)
 - `-no-metadata`: Skip fetching metadata JSON
+
+*Authentication:*
+- `--cookies PATH`: Load cookies from Netscape format file
+- `--cookies-from-browser BROWSER`: Extract cookies from browser (chrome, firefox, safari, edge)
+
+*Metadata & Embedding:*
+- `--embed-metadata`: Embed metadata into video file
+- `--write-thumbnail`: Download video thumbnail
+- `--embed-thumbnail`: Embed thumbnail into video file
+- `--embed-chapters`: Embed chapter markers
+
+*Subtitles:*
+- `--write-subs`: Download subtitles
+- `--sub-langs LANGS`: Subtitle languages (comma-separated, e.g., "en,es")
+- `--embed-subs`: Embed subtitles into video file
+
+*Download Behavior:*
+- `--no-overwrites`: Skip existing files
+- `--continue`: Resume partial downloads
+- `--restrict-filenames`: Use ASCII-only filenames
+- `--download-archive PATH`: Track downloaded videos to skip duplicates
+
+*Post-Processing:*
+- `--remux-video FORMAT`: Remux to different container (e.g., mkv, mp4)
+- `--recode-video FORMAT`: Re-encode video to different format
+- `--sponsorblock-remove CATS`: Remove SponsorBlock categories (comma-separated)
+
+*Network:*
+- `--proxy URL`: HTTP/HTTPS/SOCKS proxy
+- `--limit-rate RATE`: Limit bandwidth (e.g., "50K", "4.2M")
+
+*Filtering:*
+- `--match-filter EXPR`: Filter by metadata (e.g., "duration > 60")
+- `--date-after DATE`: Only download videos after date (YYYYMMDD)
 
 **Output:**
 Creates two files:
@@ -180,6 +255,9 @@ Creates two files:
 ./ytsync download --audio-only dQw4w9WgXcQ
 ./ytsync download --dir ~/Downloads dQw4w9WgXcQ
 ./ytsync download --format best[height<=720] dQw4w9WgXcQ
+./ytsync download --cookies-from-browser chrome --embed-subs --sub-langs en,es dQw4w9WgXcQ
+./ytsync download --write-subs --embed-metadata --write-thumbnail dQw4w9WgXcQ
+./ytsync download --sponsorblock-remove sponsor,intro --remux-video mkv dQw4w9WgXcQ
 ```
 
 ## Configuration
@@ -312,7 +390,8 @@ ytsync/                    - Public library package
 │   ├── ytdlp.go          - yt-dlp subprocess wrapper
 │   ├── rss.go            - YouTube RSS feed parser
 │   ├── transcript.go      - Transcript extraction + parsing
-│   └── metadata.go        - Video metadata fetching
+│   ├── metadata.go        - Video metadata fetching
+│   └── video_formats.go   - Video format discovery
 ├── storage/               - Persistent storage (public)
 └── cli/                   - CLI application
     └── main.go            - CLI entry point with subcommands
@@ -366,7 +445,7 @@ Coverage goals:
 - **Rate Limiting:** YouTube may block heavy usage; retry logic helps but limits exist
 - **Live Streams:** Limited metadata available during live broadcasts
 - **Shorts:** YouTube Shorts are treated as regular videos but have limited metadata
-- **Private Videos:** Cannot access private/unlisted content (intentional)
+- **Private Videos:** Cannot access private/unlisted content without authentication (use cookie support for age-restricted or members-only content)
 
 ## Contributing
 
@@ -374,7 +453,6 @@ Contributions welcome! Areas for improvement:
 
 - [ ] YouTube Data API v3 fallback support
 - [ ] Incremental sync with pagination state
-- [ ] Direct subtitle file downloads (VTT, SRT)
 - [ ] Batch operations (list of video IDs)
 - [ ] Cloud storage integration (S3, GCS)
 

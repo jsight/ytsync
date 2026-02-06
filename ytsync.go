@@ -263,13 +263,153 @@ type DownloadOptions struct {
 	// AudioQuality specifies the audio quality in kbps when AudioOnly is true.
 	// Defaults to 192 if not specified.
 	AudioQuality int
-	// IncludeMetadata saves video metadata to a JSON file alongside the video.
+	// IncludeMetadata saves video metadata to a JSON file alongside the video
+	// by making a separate yt-dlp -J call and saving the result via Go.
+	// This is distinct from WriteInfoJSON which uses yt-dlp's built-in metadata writing.
 	IncludeMetadata bool
 	// Filename specifies a custom output filename (without extension).
 	// If empty, defaults to the sanitized video title.
 	// When provided, this takes precedence over title-based naming.
-	// Useful for ensuring unique filenames based on video IDs (e.g., "dQw4w9WgXcQ").
 	Filename string
+
+	// Authentication and cookies
+	// CookiesFile is the path to a Netscape-format cookies file.
+	CookiesFile string
+	// CookiesFromBrowser extracts cookies from a browser (e.g., 'chrome', 'firefox:profile-name').
+	CookiesFromBrowser string
+	// Username for authentication.
+	Username string
+	// Password for authentication.
+	Password string
+	// UseNetrc uses .netrc for authentication.
+	UseNetrc bool
+	// NetrcLocation specifies a custom .netrc file location.
+	NetrcLocation string
+	// VideoPassword for password-protected videos.
+	VideoPassword string
+
+	// Metadata and thumbnail options
+	// WriteThumbnail writes the thumbnail image to a file.
+	WriteThumbnail bool
+	// EmbedMetadata embeds metadata (title, uploader, etc.) into the video file.
+	EmbedMetadata bool
+	// EmbedThumbnail embeds the thumbnail in the video file as cover art.
+	EmbedThumbnail bool
+	// EmbedChapters embeds chapter markers from the video description into the file.
+	EmbedChapters bool
+	// WriteInfoJSON writes video metadata to a .info.json file using yt-dlp's
+	// built-in --write-info-json flag. This produces a more comprehensive metadata
+	// file than IncludeMetadata (which uses a separate yt-dlp -J call).
+	WriteInfoJSON bool
+	// ConvertThumbnails converts thumbnails to the specified format (e.g., "jpg", "png").
+	// Empty string means no conversion.
+	ConvertThumbnails string
+
+	// Download behavior options
+	// Retries specifies the number of retries for failed downloads.
+	Retries int
+	// FragmentRetries specifies the number of retries for failed fragments.
+	FragmentRetries int
+	// NoOverwrites prevents overwriting existing files.
+	NoOverwrites bool
+	// Continue resumes partially downloaded files.
+	Continue bool
+	// RestrictFilenames restricts filenames to ASCII characters.
+	RestrictFilenames bool
+	// DownloadArchive specifies a file path for download archive tracking.
+	DownloadArchive string
+	// BreakOnExisting stops downloading when encountering already-downloaded videos.
+	BreakOnExisting bool
+	// MaxDownloads limits the number of videos to download.
+	MaxDownloads int
+	// ExtraArgs specifies additional yt-dlp arguments to append.
+	ExtraArgs []string
+
+	// Format selection and merging
+	// FormatSort specifies the sort order for format selection.
+	// Maps to --format-sort flag.
+	FormatSort string
+	// MergeOutputFormat specifies the container format for merged video+audio.
+	// Maps to --merge-output-format flag (e.g., "mp4", "mkv", "webm").
+	MergeOutputFormat string
+
+	// Subtitle options
+	// WriteSubtitles enables downloading subtitles.
+	// Maps to --write-subs flag.
+	WriteSubtitles bool
+	// WriteAutoSubtitles enables downloading auto-generated subtitles.
+	// Maps to --write-auto-subs flag.
+	WriteAutoSubtitles bool
+	// SubtitleLanguages specifies comma-separated subtitle languages to download.
+	// Maps to --sub-langs flag (e.g., "en,es,fr").
+	SubtitleLanguages string
+	// SubtitleFormat specifies the subtitle format to download.
+	// Maps to --sub-format flag (e.g., "srt", "vtt").
+	SubtitleFormat string
+	// ConvertSubtitles specifies the format to convert subtitles to.
+	// Maps to --convert-subs flag (e.g., "srt", "vtt").
+	ConvertSubtitles string
+	// EmbedSubtitles enables embedding subtitles into the video file.
+	// Maps to --embed-subs flag.
+	EmbedSubtitles bool
+
+	// Filtering and geo-restriction options
+	// MatchFilters applies generic video filters (e.g., "like_count > 100").
+	// Each entry results in a separate --match-filters flag.
+	MatchFilters []string
+	// DateAfter downloads only videos uploaded after this date (YYYYMMDD or relative like "now-1week").
+	DateAfter string
+	// DateBefore downloads only videos uploaded before this date (YYYYMMDD).
+	DateBefore string
+	// AgeLimit downloads only videos suitable for the given age.
+	AgeLimit int
+	// XForwardedFor uses the given country code or CIDR block for geo-restriction bypass.
+	XForwardedFor string
+	// PlaylistItems specifies which playlist items to download (e.g., "1-5,7,10-20").
+	PlaylistItems string
+
+	// Post-processing options
+	// RemuxVideo remuxes the video into the specified container format (e.g., "mp4", "mkv").
+	// Maps to --remux-video flag.
+	RemuxVideo string
+	// RecodeVideo re-encodes the video to the specified format (e.g., "mp4", "webm").
+	// Maps to --recode-video flag.
+	RecodeVideo string
+	// SponsorBlockMark marks sponsor segments with chapter markers (comma-separated categories).
+	// Maps to --sponsorblock-mark flag (e.g., "sponsor,intro,outro").
+	SponsorBlockMark string
+	// SponsorBlockRemove removes sponsor segments from the video (comma-separated categories).
+	// Maps to --sponsorblock-remove flag (e.g., "sponsor,intro").
+	SponsorBlockRemove string
+	// FFmpegLocation specifies the path to ffmpeg/avconv binaries.
+	// Maps to --ffmpeg-location flag.
+	FFmpegLocation string
+	// DownloadSections specifies time ranges to download (e.g., "*10:00-20:00").
+	// Maps to --download-sections flag.
+	DownloadSections string
+
+	// Network options
+	// Proxy specifies a proxy URL to use (e.g., "socks5://127.0.0.1:1080").
+	// Maps to --proxy flag.
+	Proxy string
+	// RateLimit limits download rate in bytes per second (e.g., "50K", "4.2M").
+	// Maps to --limit-rate flag.
+	RateLimit string
+	// SourceAddress specifies client-side IP address to bind to.
+	// Maps to --source-address flag.
+	SourceAddress string
+	// ForceIPv4 forces all connections through IPv4.
+	// Maps to --force-ipv4 flag.
+	ForceIPv4 bool
+	// SocketTimeout specifies socket timeout in seconds.
+	// Maps to --socket-timeout flag.
+	SocketTimeout int
+	// ConcurrentFragments specifies number of fragments to download concurrently.
+	// Maps to --concurrent-fragments flag.
+	ConcurrentFragments int
+	// Impersonate specifies a client to impersonate (e.g., 'chrome', 'firefox').
+	// Maps to --impersonate flag.
+	Impersonate string
 }
 
 // DownloadResult contains information about a completed download.
@@ -319,6 +459,71 @@ func DownloadVideoWithOptions(ctx context.Context, videoID string, opts *Downloa
 		IncludeMetadata: opts.IncludeMetadata,
 		Filename:        opts.Filename,
 		YtdlpPath:       cfg.YtdlpPath,
+
+		// Authentication and cookies
+		CookiesFile:        opts.CookiesFile,
+		CookiesFromBrowser: opts.CookiesFromBrowser,
+		Username:           opts.Username,
+		Password:           opts.Password,
+		UseNetrc:           opts.UseNetrc,
+		NetrcLocation:      opts.NetrcLocation,
+		VideoPassword:      opts.VideoPassword,
+
+		// Metadata and thumbnail options
+		WriteThumbnail:    opts.WriteThumbnail,
+		EmbedMetadata:     opts.EmbedMetadata,
+		EmbedThumbnail:    opts.EmbedThumbnail,
+		EmbedChapters:     opts.EmbedChapters,
+		WriteInfoJSON:     opts.WriteInfoJSON,
+		ConvertThumbnails: opts.ConvertThumbnails,
+
+		// Download behavior options
+		Retries:         opts.Retries,
+		FragmentRetries: opts.FragmentRetries,
+		NoOverwrites:    opts.NoOverwrites,
+		Continue:        opts.Continue,
+		RestrictFilenames: opts.RestrictFilenames,
+		DownloadArchive: opts.DownloadArchive,
+		BreakOnExisting: opts.BreakOnExisting,
+		MaxDownloads:    opts.MaxDownloads,
+		ExtraArgs:       opts.ExtraArgs,
+
+		// Format selection and merging
+		FormatSort:        opts.FormatSort,
+		MergeOutputFormat: opts.MergeOutputFormat,
+
+		// Subtitle options
+		WriteSubtitles:     opts.WriteSubtitles,
+		WriteAutoSubtitles: opts.WriteAutoSubtitles,
+		SubtitleLanguages:  opts.SubtitleLanguages,
+		SubtitleFormat:     opts.SubtitleFormat,
+		ConvertSubtitles:   opts.ConvertSubtitles,
+		EmbedSubtitles:     opts.EmbedSubtitles,
+
+		// Filtering and geo-restriction options
+		MatchFilters:  opts.MatchFilters,
+		DateAfter:     opts.DateAfter,
+		DateBefore:    opts.DateBefore,
+		AgeLimit:      opts.AgeLimit,
+		XForwardedFor: opts.XForwardedFor,
+		PlaylistItems: opts.PlaylistItems,
+
+		// Post-processing options
+		RemuxVideo:         opts.RemuxVideo,
+		RecodeVideo:        opts.RecodeVideo,
+		SponsorBlockMark:   opts.SponsorBlockMark,
+		SponsorBlockRemove: opts.SponsorBlockRemove,
+		FFmpegLocation:     opts.FFmpegLocation,
+		DownloadSections:   opts.DownloadSections,
+
+		// Network options
+		Proxy:               opts.Proxy,
+		RateLimit:           opts.RateLimit,
+		SourceAddress:       opts.SourceAddress,
+		ForceIPv4:           opts.ForceIPv4,
+		SocketTimeout:       opts.SocketTimeout,
+		ConcurrentFragments: opts.ConcurrentFragments,
+		Impersonate:         opts.Impersonate,
 	}
 
 	// Download video
@@ -333,4 +538,22 @@ func DownloadVideoWithOptions(ctx context.Context, videoID string, opts *Downloa
 		MetadataPath: result.MetadataPath,
 		Metadata:     result.Metadata,
 	}, nil
+}
+
+// ListFormats retrieves available video formats for a YouTube video.
+func ListFormats(ctx context.Context, videoID string) ([]youtube.FormatInfo, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	return youtube.ListFormats(ctx, videoID, cfg.YtdlpPath)
+}
+
+// ListSubtitles retrieves available subtitle languages for a YouTube video.
+func ListSubtitles(ctx context.Context, videoID string) ([]youtube.SubtitleInfo, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	return youtube.ListSubtitles(ctx, videoID, cfg.YtdlpPath)
 }
