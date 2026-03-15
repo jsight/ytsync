@@ -35,6 +35,11 @@ type VideoMetadata struct {
 	ViewCount int64 `json:"view_count"`
 	// UploadDate is when the video was uploaded in YYYYMMDD format.
 	UploadDate string `json:"upload_date"`
+	// Timestamp is the Unix timestamp when the video was published/processed.
+	Timestamp *int64 `json:"timestamp,omitempty"`
+	// ReleaseTimestamp is the Unix timestamp when a livestream started or video was scheduled.
+	// For livestreams, this represents the actual stream start time (preferred for date display).
+	ReleaseTimestamp *int64 `json:"release_timestamp,omitempty"`
 	// Uploader is the channel name/display name.
 	Uploader string `json:"uploader"`
 	// UploaderID is the channel ID.
@@ -137,6 +142,17 @@ func FetchMetadataWithOptions(ctx context.Context, videoID string, opts *Metadat
 
 	if date, ok := rawData["upload_date"].(string); ok {
 		metadata.UploadDate = date
+	}
+
+	// Timestamp fields for precise date/time information
+	if ts, ok := rawData["timestamp"].(float64); ok && ts > 0 {
+		timestamp := int64(ts)
+		metadata.Timestamp = &timestamp
+	}
+
+	if rts, ok := rawData["release_timestamp"].(float64); ok && rts > 0 {
+		releaseTimestamp := int64(rts)
+		metadata.ReleaseTimestamp = &releaseTimestamp
 	}
 
 	if uploader, ok := rawData["uploader"].(string); ok {
